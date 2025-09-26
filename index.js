@@ -102,6 +102,18 @@ else if (platform === 'linux') {
     // for electron ASAR
     libRoot = libRoot.replace(".asar", ".asar.unpacked");
 
+    // Set up library path for shared libraries
+    let libPath = path.join(libRoot, 'poppler-latest', 'lib');
+    if (require('fs').existsSync(libPath)) {
+        // Add our lib directory to LD_LIBRARY_PATH
+        const currentLdPath = process.env.LD_LIBRARY_PATH || '';
+        const newLdPath = currentLdPath ? `${libPath}:${currentLdPath}` : libPath;
+        execOptions.env = {
+            ...process.env,
+            LD_LIBRARY_PATH: newLdPath
+        };
+    }
+
     // make files executable (only for bundled binaries, not Lambda Layer)
     if (!process.env.AWS_LAMBDA_FUNCTION_NAME || !require('fs').existsSync('/opt/bin/pdftocairo')) {
         spawn('chmod', ['-R', '755', `${libRoot}`]);

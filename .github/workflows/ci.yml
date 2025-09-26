@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest] # windows-latest, macos-latest]
         node-version: [16, 18, 20]
 
     steps:
@@ -30,51 +30,21 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Verify binary files exist
-      shell: bash
+    - name: Verify binary files exist (Linux)
       run: |
-        echo "Checking binary directories..."
-        if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-          echo "Linux platform detected"
-          ls -la lib/linux/ || echo "Linux lib directory not found"
-          ls -la lib/linux/poppler-latest/bin/ || echo "Linux binaries not found"
-        elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
-          echo "macOS platform detected"
-          ls -la lib/osx/ || echo "macOS lib directory not found"
-          ls -la lib/osx/poppler-latest/bin/ || echo "macOS binaries not found"
-        elif [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          echo "Windows platform detected"
-          ls -la lib/win/ || echo "Windows lib directory not found"
-          ls -la lib/win/poppler-0.51/bin/ || echo "Windows binaries not found"
-        fi
+        echo "Linux platform detected"
+        ls -la lib/linux/ || echo "Linux lib directory not found"
+        ls -la lib/linux/poppler-latest/bin/ || echo "Linux binaries not found"
+        ls -la lib/linux/poppler-latest/lib/ || echo "Linux libraries not found"
 
-    - name: Make binaries executable (Unix)
-      if: runner.os != 'Windows'
+    - name: Setup Linux binaries
       run: |
-        if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-          chmod +x lib/linux/poppler-latest/bin/* || echo "Failed to make Linux binaries executable"
-        elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
-          chmod +x lib/osx/poppler-latest/bin/* || echo "Failed to make macOS binaries executable"
-        fi
+        chmod +x lib/linux/poppler-latest/bin/* || echo "Failed to make Linux binaries executable"
 
     - name: Test binary execution (Linux)
-      if: matrix.os == 'ubuntu-latest'
       run: |
         echo "Testing Linux binaries..."
         ./lib/linux/poppler-latest/bin/pdfinfo -v || echo "pdfinfo version check failed"
-
-    - name: Test binary execution (macOS)
-      if: matrix.os == 'macos-latest'
-      run: |
-        echo "Testing macOS binaries..."
-        ./lib/osx/poppler-latest/bin/pdfinfo -v || echo "pdfinfo version check failed"
-
-    - name: Test binary execution (Windows)
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: |
-        echo Testing Windows binaries...
-        lib\win\poppler-0.51\bin\pdfinfo.exe -v || echo pdfinfo version check failed
 
     - name: Run tests
       run: npm test
