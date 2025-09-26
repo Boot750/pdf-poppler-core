@@ -1,0 +1,18 @@
+# Source files (we ship dist/ instead)
+src/
+tsconfig.json
+*.test.ts
+*.test.js
+
+# Development
+node_modules/
+coverage/
+.nyc_output/
+
+# Docs (except README)
+*.md
+!README.md
+
+# IDE
+.vscode/
+.idea/

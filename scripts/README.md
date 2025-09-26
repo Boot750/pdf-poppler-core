@@ -1,0 +1,76 @@
+# Scripts
+
+Utility scripts for building, testing, and publishing pdf-poppler packages.
+
+## Directory Structure
+
+```
+scripts/
+  build/              # Binary download/build scripts
+  test/               # Docker test environments
+  prepare-publish.sh  # Prepare packages for publishing
+  publish-packages.sh # Publish to npm
+  setup-test.sh       # Setup local test environment
+```
+
+## Build Scripts
+
+Scripts for downloading and building Poppler binaries.
+
+| Script | Description |
+|--------|-------------|
+| `build/get-poppler-linux.dockerfile` | Build Linux binaries from Amazon Linux |
+| `build/get-poppler-with-xvfb-linux.dockerfile` | Build Linux binaries with Xvfb |
+| `build/build-bundled-xvfb.sh` | Automated build script for Xvfb variant |
+| `build/get-poppler-windows.ps1` | Download Windows binaries |
+
+See [build/README.md](build/README.md) for details.
+
+## Test Scripts
+
+Docker configurations for testing in different environments.
+
+| Script | Description |
+|--------|-------------|
+| `test/test.dockerfile` | Standard Node.js test environment |
+| `test/lambda-test.dockerfile` | AWS Lambda simulation |
+
+See [test/README.md](test/README.md) for details.
+
+## Publishing Scripts
+
+Scripts for releasing packages to npm.
+
+| Script | Description |
+|--------|-------------|
+| `prepare-publish.sh` | Prepare packages (build, lint, test) |
+| `publish-packages.sh` | Publish all packages to npm |
+| `setup-test.sh` | Setup local testing with npm link |
+
+## Quick Start
+
+### Build Linux Binaries
+
+```bash
+./scripts/build/build-bundled-xvfb.sh
+```
+
+### Build Windows Binaries
+
+```powershell
+.\scripts\build\get-poppler-windows.ps1
+```
+
+### Run Tests in Docker
+
+```bash
+docker build -t pdf-poppler-test -f scripts/test/test.dockerfile .
+docker run --rm pdf-poppler-test
+```
+
+### Publish Packages
+
+```bash
+./scripts/prepare-publish.sh
+./scripts/publish-packages.sh
+```

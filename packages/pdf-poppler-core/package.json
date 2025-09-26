@@ -1,0 +1,73 @@
+{
+  "name": "pdf-poppler-core",
+  "version": "0.0.3-beta",
+  "description": "Convert PDF files into images using Poppler with promises. Core wrapper package without binaries. Requires a platform-specific binary package.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boot750/pdf-poppler-core.git",
+    "directory": "packages/pdf-poppler-core"
+  },
+  "homepage": "https://github.com/Boot750/pdf-poppler-core#readme",
+  "bugs": {
+    "url": "https://github.com/Boot750/pdf-poppler-core/issues"
+  },
+  "keywords": [
+    "pdf",
+    "poppler",
+    "jpeg",
+    "jpg",
+    "png",
+    "tiff",
+    "tif",
+    "parse",
+    "info",
+    "image",
+    "pdf2image",
+    "pdf2img",
+    "electron",
+    "lambda",
+    "aws",
+    "linux",
+    "serverless"
+  ],
+  "author": "Beat Bächi",
+  "license": "ISC",
+  "peerDependencies": {
+    "pdf-poppler-binaries-linux": ">=0.0.1-beta",
+    "pdf-poppler-binaries-win32": ">=0.0.1-beta",
+    "pdf-poppler-binaries-darwin": ">=0.0.1-beta"
+  },
+  "peerDependenciesMeta": {
+    "pdf-poppler-binaries-linux": {
+      "optional": true
+    },
+    "pdf-poppler-binaries-win32": {
+      "optional": true
+    },
+    "pdf-poppler-binaries-darwin": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "jest": "^29.5.0",
+    "typescript": "^5.0.0",
+    "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
+}
