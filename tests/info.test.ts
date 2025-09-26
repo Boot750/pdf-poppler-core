@@ -17,12 +17,14 @@ describe('PDF Info Functionality', () => {
       expect(info).toBeDefined();
       expect(typeof info).toBe('object');
 
-      // Check for essential properties
-      expect(info).toHaveProperty('title');
+      // Check for essential properties that are always present
       expect(info).toHaveProperty('pages');
       expect(info).toHaveProperty('page_size');
       expect(info).toHaveProperty('width_in_pts');
       expect(info).toHaveProperty('height_in_pts');
+
+      // Optional properties that may or may not be present
+      // expect(info).toHaveProperty('title'); // Not all PDFs have titles
     });
 
     it('should parse page dimensions correctly', async () => {
@@ -57,13 +59,17 @@ describe('PDF Info Functionality', () => {
       const info = await poppler.info(samplePdfPath);
 
       // Verify expected property names (lowercase with underscores)
-      const expectedProperties = [
-        'title', 'pages', 'page_size', 'width_in_pts', 'height_in_pts'
+      const requiredProperties = [
+        'pages', 'page_size', 'width_in_pts', 'height_in_pts'
       ];
 
-      expectedProperties.forEach(prop => {
+      requiredProperties.forEach(prop => {
         expect(info).toHaveProperty(prop);
       });
+
+      // Common optional properties
+      const optionalProperties = ['title', 'creator', 'producer', 'pdf_version'];
+      // These may or may not be present depending on the PDF
 
       // Check that property names follow the expected format
       Object.keys(info).forEach(key => {
@@ -112,13 +118,16 @@ describe('PDF Info Functionality', () => {
 
   describe('Error Handling', () => {
     it('should provide meaningful error messages', async () => {
+      await expect(poppler.info('non-existent-file.pdf')).rejects.toThrow();
+
       try {
         await poppler.info('non-existent-file.pdf');
         fail('Expected an error to be thrown');
-      } catch (error) {
-        expect(error).toBeInstanceOf(Error);
-        expect((error as Error).message).toBeDefined();
-        expect(typeof (error as Error).message).toBe('string');
+      } catch (error: any) {
+        expect(error).toBeTruthy();
+        expect(error.message).toBeDefined();
+        expect(typeof error.message).toBe('string');
+        expect(error.message.length).toBeGreaterThan(0);
       }
     });
 

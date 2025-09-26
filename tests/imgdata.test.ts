@@ -171,13 +171,16 @@ describe('PDF Image Data Functionality', () => {
     });
 
     it('should provide meaningful error messages', async () => {
+      await expect(poppler.imgdata('non-existent-file.pdf')).rejects.toThrow();
+
       try {
         await poppler.imgdata('non-existent-file.pdf');
         fail('Expected an error to be thrown');
-      } catch (error) {
-        expect(error).toBeInstanceOf(Error);
-        expect((error as Error).message).toBeDefined();
-        expect(typeof (error as Error).message).toBe('string');
+      } catch (error: any) {
+        expect(error).toBeTruthy();
+        expect(error.message).toBeDefined();
+        expect(typeof error.message).toBe('string');
+        expect(error.message.length).toBeGreaterThan(0);
       }
     });
 

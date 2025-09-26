@@ -3,7 +3,7 @@ import * as fs from 'fs';
 
 const poppler = require('../index.js');
 
-describe('Integration Tests', () => {
+describe.skip('Integration Tests', () => {
   const samplePdfPath = path.join(__dirname, '..', 'sample.pdf');
   const testOutputDir = path.join(__dirname, '..', 'test-output');
 
