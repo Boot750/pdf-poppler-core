@@ -57,25 +57,30 @@ RUN echo "Copying poppler libraries..." && \
     cp /usr/lib64/libpcre.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libffi.so* /output/lib/ 2>/dev/null || true
 
-# Copy essential system libraries
-RUN echo "Copying system libraries..." && \
-    cp /lib64/libc.so.6 /output/lib/ 2>/dev/null || true && \
-    cp /lib64/libm.so.6 /output/lib/ 2>/dev/null || true && \
-    cp /lib64/libpthread.so.0 /output/lib/ 2>/dev/null || true && \
-    cp /lib64/libdl.so.2 /output/lib/ 2>/dev/null || true && \
+# Copy only non-system libraries (avoid glibc conflicts)
+RUN echo "Copying safe system libraries..." && \
     cp /lib64/libz.so* /output/lib/ 2>/dev/null || true && \
     cp /lib64/libstdc++.so* /output/lib/ 2>/dev/null || true && \
     cp /lib64/libgcc_s.so* /output/lib/ 2>/dev/null || true
 
-# Use ldd to find missing dependencies and copy them
+# Note: We skip copying core glibc libraries (libc.so.6, libpthread.so.0, libm.so.6, libdl.so.2)
+# as these should use the host system versions to avoid ABI conflicts
+
+# Use ldd to find missing dependencies and copy them (excluding system libraries)
 RUN echo "=== Finding missing dependencies ===" && \
     for binary in /output/bin/*; do \
         echo "Dependencies for $(basename $binary):"; \
         ldd "$binary" 2>/dev/null | grep "not found" || true; \
     done && \
-    echo "=== Copying additional dependencies ===" && \
+    echo "=== Copying additional dependencies (excluding system libs) ===" && \
     ldd /output/bin/pdfinfo | grep "=>" | awk '{print $3}' | while read lib; do \
-        if [[ -f "$lib" && ! -f "/output/lib/$(basename $lib)" ]]; then \
+        libname=$(basename "$lib"); \
+        # Skip core system libraries that should use host versions \
+        if [[ "$libname" == "libc.so.6" || "$libname" == "libpthread.so.0" || \
+              "$libname" == "libm.so.6" || "$libname" == "libdl.so.2" || \
+              "$libname" == "ld-linux-x86-64.so.2" || "$libname" == "librt.so.1" ]]; then \
+            echo "Skipping system library: $libname"; \
+        elif [[ -f "$lib" && ! -f "/output/lib/$libname" ]]; then \
             cp "$lib" /output/lib/ 2>/dev/null || echo "Failed to copy $lib"; \
         fi; \
     done
