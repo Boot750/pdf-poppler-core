@@ -55,7 +55,7 @@ describe('Platform-Specific Functionality', () => {
       const poppler = require('../index.js');
 
       expect(poppler.path).toContain('linux');
-      expect(poppler.path).toContain('poppler-latest');
+      expect(poppler.path).toContain('poppler-xvfb-latest');
     });
 
     it('should handle unsupported platforms', () => {
@@ -120,7 +120,7 @@ describe('Platform-Specific Functionality', () => {
 
         const poppler = require('../index.js');
         expect(poppler.path).toContain('linux');
-        expect(poppler.path).toContain('poppler-latest');
+        expect(poppler.path).toContain('poppler-xvfb-latest');
       } finally {
         jest.dontMock('fs');
         delete process.env.AWS_LAMBDA_FUNCTION_NAME;
@@ -140,7 +140,7 @@ describe('Platform-Specific Functionality', () => {
       const poppler = require('../index.js');
 
       expect(poppler.path).toContain('linux');
-      expect(poppler.path).toContain('poppler-latest');
+      expect(poppler.path).toContain('poppler-xvfb-latest');
       expect(poppler.path).not.toBe('/opt/bin');
     });
   });

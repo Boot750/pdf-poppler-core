@@ -83,23 +83,23 @@ else if (platform === 'linux') {
         if (require('fs').existsSync('/opt/bin/pdftocairo')) {
             popplerPath = '/opt/bin';
         } else {
-            // Fallback to bundled binaries
-            popplerPath = path.join(
-                __dirname,
-                'lib',
-                'linux',
-                'poppler-latest',
-                'bin'
-            );
+            // Check for bundled Xvfb version first (includes virtual display)
+            const xvfbBundlePath = path.join(__dirname, 'lib', 'linux', 'poppler-xvfb-latest', 'bin');
+            if (require('fs').existsSync(path.join(xvfbBundlePath, 'pdftocairo'))) {
+                popplerPath = xvfbBundlePath;
+            } else {
+                // Fallback to regular bundled binaries
+                popplerPath = path.join(__dirname, 'lib', 'linux', 'poppler-latest', 'bin');
+            }
         }
     } else {
-        popplerPath = path.join(
-            __dirname,
-            'lib',
-            'linux',
-            'poppler-latest',
-            'bin'
-        );
+        // For non-Lambda environments, prefer bundled Xvfb version if available
+        const xvfbBundlePath = path.join(__dirname, 'lib', 'linux', 'poppler-xvfb-latest', 'bin');
+        if (require('fs').existsSync(path.join(xvfbBundlePath, 'pdftocairo'))) {
+            popplerPath = xvfbBundlePath;
+        } else {
+            popplerPath = path.join(__dirname, 'lib', 'linux', 'poppler-latest', 'bin');
+        }
     }
 
     // for electron ASAR
@@ -115,7 +115,12 @@ else if (platform === 'linux') {
     libRoot = libRoot.replace(".asar", ".asar.unpacked");
 
     // Set up library path for shared libraries
-    let libPath = path.join(libRoot, 'poppler-latest', 'lib');
+    // Check for bundled Xvfb version first
+    let libPath = path.join(libRoot, 'poppler-xvfb-latest', 'lib');
+    if (!require('fs').existsSync(libPath)) {
+        libPath = path.join(libRoot, 'poppler-latest', 'lib');
+    }
+    
     if (require('fs').existsSync(libPath)) {
         // Add our lib directory to LD_LIBRARY_PATH
         const currentLdPath = process.env.LD_LIBRARY_PATH || '';
@@ -158,9 +163,13 @@ else {
     process.exit(1);
 }
 
+// Check if we're using the bundled Xvfb version
+const usingBundledXvfb = popplerPath && popplerPath.includes('poppler-xvfb-latest');
+
 module.exports.path = popplerPath;
 module.exports.exec_options = execOptions;
 module.exports.isLambda = isLambda;
+module.exports.hasBundledXvfb = usingBundledXvfb;
 module.exports.info = require('./lib/info');
 module.exports.imgdata = require('./lib/imgdata');
 module.exports.convert = require('./lib/convert');
