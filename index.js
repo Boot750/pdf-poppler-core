@@ -140,6 +140,10 @@ else if (platform === 'linux') {
             if (require('fs').existsSync('/opt/lib')) {
                 env.LD_LIBRARY_PATH = `/opt/lib:${env.LD_LIBRARY_PATH}`;
             }
+            // Set XKB config path for bundled keyboard config
+            if (require('fs').existsSync(path.join(__dirname, 'lib', 'linux', 'poppler-xvfb-latest', 'share', 'xkb'))) {
+                env.XKB_CONFIG_ROOT = path.join(__dirname, 'lib', 'linux', 'poppler-xvfb-latest', 'share', 'xkb');
+            }
         }
         
         execOptions.env = env;

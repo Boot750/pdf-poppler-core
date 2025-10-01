@@ -38,29 +38,14 @@ describe('PDF Convert Functionality', () => {
         fs.unlinkSync(path.join(testOutputDir, f));
       });
 
-      console.log('Before convert - test output dir contents:', fs.readdirSync(testOutputDir));
-      console.log('Sample PDF exists:', fs.existsSync(samplePdfPath));
-      console.log('Test output dir exists:', fs.existsSync(testOutputDir));
-      console.log('Current working directory:', process.cwd());
-      console.log('__dirname:', __dirname);
-      console.log('samplePdfPath:', samplePdfPath);
-      console.log('testOutputDir:', testOutputDir);
-
-      try {
-        await poppler.convert(samplePdfPath, options);
-      } catch (error) {
-        console.error('Convert failed:', error);
-        throw error;
-      }
+      await poppler.convert(samplePdfPath, options);
 
       // Small delay to ensure file system operations complete
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Check that PNG files were created
       const files = fs.readdirSync(testOutputDir);
-      console.log('After convert - all files in test output:', files);
       const pngFiles = files.filter(file => file.startsWith('test-png-page') && file.endsWith('.png'));
-      console.log('PNG files found:', pngFiles);
 
       expect(pngFiles.length).toBeGreaterThan(0);
 
@@ -104,18 +89,11 @@ describe('PDF Convert Functionality', () => {
         page: 1
       };
 
-      try {
-        await poppler.convert(samplePdfPath, options);
-      } catch (error) {
-        console.error('Single page convert failed:', error);
-        throw error;
-      }
+      await poppler.convert(samplePdfPath, options);
 
       // Check that exactly one PNG file was created
       const files = fs.readdirSync(testOutputDir);
-      console.log('Single page - all files:', files);
       const pngFiles = files.filter(file => file.startsWith('test-single-page') && file.endsWith('.png'));
-      console.log('Single page - PNG files:', pngFiles);
 
       expect(pngFiles.length).toBe(1);
       expect(pngFiles[0]).toBe('test-single-page-1.png');

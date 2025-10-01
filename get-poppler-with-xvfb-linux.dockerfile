@@ -12,8 +12,13 @@ RUN yum update -y && yum install -y \
 RUN yum install -y \
     poppler-utils \
     mesa-libEGL mesa-libGL mesa-libGLU \
+    libX11 libXext libXrender libXrandr libXfixes \
+    libXcomposite libXdamage libXtst libXmu libXt \
+    libxcb libxcb-shm libxcb-render \
+    libSM libICE \
     xorg-x11-server-Xvfb \
     xorg-x11-xauth \
+    xkeyboard-config \
     && yum clean all
 
 # Create output directories
@@ -85,8 +90,8 @@ rm -f /tmp/.Xauth${DISPLAY_NUM}
 exit $EXIT_CODE
 EOF
 
-# Make all binaries executable
-RUN chmod +x /output/bin/*
+# Fix line endings and make all binaries executable
+RUN sed -i 's/\r$//' /output/bin/xvfb-run && chmod +x /output/bin/*
 
 # Copy required libraries for poppler
 RUN echo "Copying poppler libraries..." && \
@@ -114,6 +119,8 @@ RUN echo "Copying X11 and graphics libraries..." && \
     cp /usr/lib64/libEGL.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libGL.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libGLU.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libGLX.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libGLdispatch.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libglapi.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libX11.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libXext.so* /output/lib/ 2>/dev/null || true && \
@@ -123,6 +130,7 @@ RUN echo "Copying X11 and graphics libraries..." && \
     cp /usr/lib64/libXau.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libXdmcp.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libxcb.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libxcb-*.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libXfixes.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libXrender.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libXrandr.so* /output/lib/ 2>/dev/null || true && \
@@ -130,13 +138,26 @@ RUN echo "Copying X11 and graphics libraries..." && \
     cp /usr/lib64/libXcursor.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libXcomposite.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libXdamage.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libXtst.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libXmu.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libXmuu.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libXt.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libSM.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libICE.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libdrm.so* /output/lib/ 2>/dev/null || true
 
 # Copy safe system libraries (avoid glibc conflicts)
 RUN echo "Copying safe system libraries..." && \
     cp /lib64/libz.so* /output/lib/ 2>/dev/null || true && \
     cp /lib64/libstdc++.so* /output/lib/ 2>/dev/null || true && \
-    cp /lib64/libgcc_s.so* /output/lib/ 2>/dev/null || true
+    cp /lib64/libgcc_s.so* /output/lib/ 2>/dev/null || true && \
+    cp /lib64/libselinux.so* /output/lib/ 2>/dev/null || true && \
+    cp /lib64/libpcre.so* /output/lib/ 2>/dev/null || true
+
+# Copy xkeyboard-config for proper keyboard setup
+RUN echo "Copying xkeyboard-config..." && \
+    mkdir -p /output/share && \
+    cp -r /usr/share/X11/xkb /output/share/ 2>/dev/null || true
 
 # Find and copy additional dependencies for both poppler and Xvfb
 RUN echo "=== Finding missing dependencies for poppler ===" && \
@@ -176,4 +197,4 @@ RUN echo "=== Available binaries ===" && \
 WORKDIR /output
 
 # Create tar.gz with both poppler and Xvfb
-CMD ["sh", "-c", "tar -czf /tmp/poppler-xvfb-linux-binaries.tar.gz bin lib && cat /tmp/poppler-xvfb-linux-binaries.tar.gz"]
+CMD ["sh", "-c", "tar -czf /tmp/poppler-xvfb-linux-binaries.tar.gz bin lib share && cat /tmp/poppler-xvfb-linux-binaries.tar.gz"]
