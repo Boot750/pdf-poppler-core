@@ -1,6 +1,5 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
 
 describe('Platform-Specific Functionality', () => {
   const originalPlatform = process.platform;
@@ -8,18 +7,16 @@ describe('Platform-Specific Functionality', () => {
   afterEach(() => {
     // Reset platform after each test
     Object.defineProperty(process, 'platform', { value: originalPlatform });
-
-    // Clear ALL require cache entries for this project
-    Object.keys(require.cache).forEach(key => {
-      if (key.includes('pdf-poppler') || key.includes(__dirname.replace(/\\/g, '/'))) {
-        delete require.cache[key];
-      }
-    });
+    
+    // Reset modules completely
+    jest.resetModules();
   });
 
   describe('Platform Detection', () => {
     it('should detect Windows platform correctly', () => {
-      Object.defineProperty(process, 'platform', { value: 'win32' });
+      jest.doMock('os', () => ({
+        platform: () => 'win32'
+      }));
 
       const poppler = require('../index.js');
 
@@ -34,7 +31,9 @@ describe('Platform-Specific Functionality', () => {
         return;
       }
 
-      Object.defineProperty(process, 'platform', { value: 'darwin' });
+      jest.doMock('os', () => ({
+        platform: () => 'darwin'
+      }));
 
       const poppler = require('../index.js');
 
@@ -49,7 +48,9 @@ describe('Platform-Specific Functionality', () => {
         return;
       }
 
-      Object.defineProperty(process, 'platform', { value: 'linux' });
+      jest.doMock('os', () => ({
+        platform: () => 'linux'
+      }));
 
       const poppler = require('../index.js');
 
@@ -65,7 +66,9 @@ describe('Platform-Specific Functionality', () => {
 
   describe('Linux Platform Specific', () => {
     beforeEach(() => {
-      Object.defineProperty(process, 'platform', { value: 'linux' });
+      jest.doMock('os', () => ({
+        platform: () => 'linux'
+      }));
     });
 
     it('should use Lambda Layer binaries when in AWS Lambda environment', () => {
@@ -88,7 +91,6 @@ describe('Platform-Specific Functionality', () => {
           }
         }));
 
-        delete require.cache[require.resolve('../index.js')];
         const poppler = require('../index.js');
         expect(poppler.path).toBe('/opt/bin');
       } finally {
@@ -116,7 +118,6 @@ describe('Platform-Specific Functionality', () => {
           }
         }));
 
-        delete require.cache[require.resolve('../index.js')];
         const poppler = require('../index.js');
         expect(poppler.path).toContain('linux');
         expect(poppler.path).toContain('poppler-latest');
@@ -146,7 +147,9 @@ describe('Platform-Specific Functionality', () => {
 
   describe('macOS Platform Specific', () => {
     beforeEach(() => {
-      Object.defineProperty(process, 'platform', { value: 'darwin' });
+      jest.doMock('os', () => ({
+        platform: () => 'darwin'
+      }));
     });
 
     it('should set up correct paths for macOS', () => {
@@ -186,7 +189,10 @@ describe('Platform-Specific Functionality', () => {
 
   describe('Windows Platform Specific', () => {
     beforeEach(() => {
-      Object.defineProperty(process, 'platform', { value: 'win32' });
+      jest.doMock('os', () => ({
+        ...jest.requireActual('os'),
+        platform: () => 'win32'
+      }));
     });
 
     it('should set up correct paths for Windows', () => {
@@ -209,14 +215,9 @@ describe('Platform-Specific Functionality', () => {
   describe('Execution Options', () => {
     it('should provide consistent execution options across platforms', () => {
       ['win32', 'darwin', 'linux'].forEach(platform => {
-        Object.defineProperty(process, 'platform', { value: platform });
-
-        // Clear cache and reload
-        Object.keys(require.cache).forEach(key => {
-          if (key.includes('pdf-poppler')) {
-            delete require.cache[key];
-          }
-        });
+        jest.doMock('os', () => ({
+          platform: () => platform
+        }));
 
         const poppler = require('../index.js');
 
@@ -247,14 +248,9 @@ describe('Platform-Specific Functionality', () => {
   describe('Module Exports', () => {
     it('should provide consistent API across all platforms', () => {
       ['win32', 'darwin', 'linux'].forEach(platform => {
-        Object.defineProperty(process, 'platform', { value: platform });
-
-        // Clear cache and reload
-        Object.keys(require.cache).forEach(key => {
-          if (key.includes('pdf-poppler')) {
-            delete require.cache[key];
-          }
-        });
+        jest.doMock('os', () => ({
+          platform: () => platform
+        }));
 
         const poppler = require('../index.js');
 
@@ -270,7 +266,9 @@ describe('Platform-Specific Functionality', () => {
 
   describe('Environment Variable Handling', () => {
     it('should handle AWS Lambda environment variables correctly', () => {
-      Object.defineProperty(process, 'platform', { value: 'linux' });
+      jest.doMock('os', () => ({
+        platform: () => 'linux'
+      }));
 
       // Test with Lambda function name set
       process.env.AWS_LAMBDA_FUNCTION_NAME = 'my-test-function';
@@ -291,7 +289,9 @@ describe('Platform-Specific Functionality', () => {
         return;
       }
 
-      Object.defineProperty(process, 'platform', { value: 'linux' });
+      jest.doMock('os', () => ({
+        platform: () => 'linux'
+      }));
 
       // Ensure no Lambda environment
       delete process.env.AWS_LAMBDA_FUNCTION_NAME;
