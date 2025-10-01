@@ -8,8 +8,8 @@ RUN yum update -y && yum install -y \
     which \
     && yum clean all
 
-# Install poppler-utils
-RUN yum install -y poppler-utils
+# Install poppler-utils and graphics libraries needed for pdftocairo
+RUN yum install -y poppler-utils mesa-libEGL mesa-libGL mesa-libGLU
 
 # Create output directories
 RUN mkdir -p /output/bin /output/lib
@@ -56,7 +56,16 @@ RUN echo "Copying poppler libraries..." && \
     cp /usr/lib64/liblzma.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libbz2.so* /output/lib/ 2>/dev/null || true && \
     cp /usr/lib64/libpcre.so* /output/lib/ 2>/dev/null || true && \
-    cp /usr/lib64/libffi.so* /output/lib/ 2>/dev/null || true
+    cp /usr/lib64/libffi.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libEGL.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libGL.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libGLU.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libglapi.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libX11.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libXext.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libxcb.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libXau.so* /output/lib/ 2>/dev/null || true && \
+    cp /usr/lib64/libXdmcp.so* /output/lib/ 2>/dev/null || true
 
 # Copy only non-system libraries (avoid glibc conflicts)
 RUN echo "Copying safe system libraries..." && \
@@ -92,7 +101,9 @@ RUN echo "=== Available poppler binaries ===" && \
     echo "=== Available libraries ===" && \
     ls -la /output/lib/ && \
     echo "=== Testing pdfinfo with LD_LIBRARY_PATH ===" && \
-    LD_LIBRARY_PATH=/output/lib /output/bin/pdfinfo -v 2>/dev/null || echo "pdfinfo test completed"
+    LD_LIBRARY_PATH=/output/lib /output/bin/pdfinfo -v 2>/dev/null || echo "pdfinfo test completed" && \
+    echo "=== Testing pdftocairo with LD_LIBRARY_PATH ===" && \
+    LD_LIBRARY_PATH=/output/lib /output/bin/pdftocairo -v 2>/dev/null || echo "pdftocairo test completed"
 
 WORKDIR /output
 
