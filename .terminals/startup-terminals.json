@@ -1,0 +1,19 @@
+{
+  "enabled": true,
+  "closeExistingTerminals": false,
+  "skipResetConfirmation": false,
+  "tabs": [
+    {
+      "name": "AI",
+      "shellId": "default",
+      "workingDirectory": "",
+      "enabled": true
+    },
+    {
+      "name": "GIT",
+      "shellId": "default",
+      "workingDirectory": "",
+      "enabled": true
+    }
+  ]
+}

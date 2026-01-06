@@ -1,0 +1,34 @@
+{
+  "name": "pdf-poppler-binaries-darwin",
+  "version": "1.0.0",
+  "description": "macOS binaries for pdf-poppler. Includes Poppler utilities compiled for macOS (x64).",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boot750/pdf-poppler-core.git",
+    "directory": "packages/pdf-poppler-binaries-darwin"
+  },
+  "homepage": "https://github.com/Boot750/pdf-poppler-core#readme",
+  "bugs": {
+    "url": "https://github.com/Boot750/pdf-poppler-core/issues"
+  },
+  "keywords": [
+    "pdf",
+    "poppler",
+    "macos",
+    "darwin",
+    "binaries",
+    "pdf2image",
+    "electron"
+  ],
+  "author": "Beat Bächi",
+  "license": "ISC",
+  "os": ["darwin"],
+  "cpu": ["x64"],
+  "files": [
+    "index.js",
+    "lib",
+    "README.md",
+    "LICENSE"
+  ]
+}

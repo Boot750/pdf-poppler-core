@@ -1,0 +1,33 @@
+{
+  "name": "pdf-poppler-binaries-win32",
+  "version": "0.0.3-beta",
+  "description": "Windows binaries for pdf-poppler. Includes Poppler utilities compiled for Windows (x64).",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boot750/pdf-poppler-core.git",
+    "directory": "packages/pdf-poppler-binaries-win32"
+  },
+  "homepage": "https://github.com/Boot750/pdf-poppler-core#readme",
+  "bugs": {
+    "url": "https://github.com/Boot750/pdf-poppler-core/issues"
+  },
+  "keywords": [
+    "pdf",
+    "poppler",
+    "windows",
+    "binaries",
+    "pdf2image",
+    "electron"
+  ],
+  "author": "Beat Bächi",
+  "license": "ISC",
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "files": [
+    "index.js",
+    "lib",
+    "README.md",
+    "LICENSE"
+  ]
+}

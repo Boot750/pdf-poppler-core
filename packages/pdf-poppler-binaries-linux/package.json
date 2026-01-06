@@ -1,0 +1,35 @@
+{
+  "name": "pdf-poppler-binaries-linux",
+  "version": "0.0.3-beta",
+  "description": "Linux binaries for pdf-poppler. Includes Poppler utilities compiled for Linux (x64) with optional Xvfb support for headless environments.",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boot750/pdf-poppler-core.git",
+    "directory": "packages/pdf-poppler-binaries-linux"
+  },
+  "homepage": "https://github.com/Boot750/pdf-poppler-core#readme",
+  "bugs": {
+    "url": "https://github.com/Boot750/pdf-poppler-core/issues"
+  },
+  "keywords": [
+    "pdf",
+    "poppler",
+    "linux",
+    "binaries",
+    "pdf2image",
+    "lambda",
+    "aws",
+    "serverless"
+  ],
+  "author": "Beat Bächi",
+  "license": "ISC",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "files": [
+    "index.js",
+    "lib",
+    "README.md",
+    "LICENSE"
+  ]
+}
