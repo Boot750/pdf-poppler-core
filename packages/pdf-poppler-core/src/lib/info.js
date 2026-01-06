@@ -1,12 +1,47 @@
 const path = require('path');
+const fs = require('fs');
 const {execFile} = require('child_process');
 const EXEC_OPTS = require('../index').exec_options;
 
 let popplerPath = require('../index').path;
 
+/**
+ * Validates a PDF file path for security
+ * @param {string} file - The file path to validate
+ * @throws {Error} If validation fails
+ */
+function validatePdfPath(file) {
+    if (typeof file !== 'string') {
+        throw new Error('File path must be a string');
+    }
+    if (file.includes('\0')) {
+        throw new Error('Invalid file path: null bytes detected');
+    }
+    const resolvedPath = path.resolve(file);
+    if (!fs.existsSync(resolvedPath)) {
+        throw new Error(`File not found: ${resolvedPath}`);
+    }
+    const stats = fs.statSync(resolvedPath);
+    if (!stats.isFile()) {
+        throw new Error('Path is not a file');
+    }
+    if (!resolvedPath.toLowerCase().endsWith('.pdf')) {
+        throw new Error('File must have .pdf extension');
+    }
+    return resolvedPath;
+}
+
 module.exports = function (file) {
     return new Promise((resolve, reject) => {
-        execFile(path.join(popplerPath, 'pdfinfo'), [file], EXEC_OPTS, (error, stdout, stderr) => {
+        // Validate input file
+        let validatedFile;
+        try {
+            validatedFile = validatePdfPath(file);
+        } catch (err) {
+            return reject(err);
+        }
+
+        execFile(path.join(popplerPath, 'pdfinfo'), [validatedFile], EXEC_OPTS, (error, stdout, stderr) => {
             if (error) {
                 reject(error);
             }
