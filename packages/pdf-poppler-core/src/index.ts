@@ -108,8 +108,42 @@ function getBinaryPath(): string {
     }
 
     // Priority 3: Default platform-specific package
+    // For Linux, check if AWS Lambda-compatible package is available first
+    if (platform === 'linux') {
+        // Try AWS Lambda package first (Amazon Linux 2 compatible, works everywhere)
+        const aws2Package = resolveBinaryPackage('pdf-poppler-binaries-aws-2');
+        if (aws2Package) {
+            try {
+                const binaryPackage = require('pdf-poppler-binaries-aws-2');
+                return binaryPackage.getBinaryPath();
+            } catch (e) {
+                // Fall through to regular linux package
+            }
+        }
+
+        // Fall back to standard linux package
+        const linuxPackage = resolveBinaryPackage('pdf-poppler-binaries-linux');
+        if (linuxPackage) {
+            try {
+                const binaryPackage = require('pdf-poppler-binaries-linux');
+                return binaryPackage.getBinaryPath();
+            } catch (e) {
+                const errorMessage = e instanceof Error ? e.message : String(e);
+                throw new Error(
+                    `Failed to load binary package 'pdf-poppler-binaries-linux': ${errorMessage}`
+                );
+            }
+        }
+
+        throw new Error(
+            `No Linux binary package found. ` +
+            `For AWS Lambda, install: npm install pdf-poppler-binaries-aws-2\n` +
+            `For other Linux, install: npm install pdf-poppler-binaries-linux\n` +
+            `Or set POPPLER_BINARY_PATH to use custom binaries.`
+        );
+    }
+
     const packageMap: Record<string, string> = {
-        'linux': 'pdf-poppler-binaries-linux',
         'win32': 'pdf-poppler-binaries-win32',
         'darwin': 'pdf-poppler-binaries-darwin'
     };

@@ -1,0 +1,43 @@
+#!/bin/bash
+# Simplified xvfb-run script for bundled use
+
+DISPLAY_NUM=${DISPLAY_NUM:-99}
+SCREEN_NUM=${SCREEN_NUM:-0}
+SCREEN_RESOLUTION=${SCREEN_RESOLUTION:-1024x768x24}
+XVFB_TIMEOUT=${XVFB_TIMEOUT:-5}
+
+# Find the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Start Xvfb in background
+DISPLAY=:${DISPLAY_NUM} "${SCRIPT_DIR}/Xvfb" :${DISPLAY_NUM} -screen ${SCREEN_NUM} ${SCREEN_RESOLUTION} -nolisten tcp -auth /tmp/.Xauth${DISPLAY_NUM} &
+XVFB_PID=$!
+
+# Wait for Xvfb to start
+sleep ${XVFB_TIMEOUT}
+
+# Set up auth file
+if command -v "${SCRIPT_DIR}/xauth" >/dev/null 2>&1; then
+    "${SCRIPT_DIR}/xauth" -f /tmp/.Xauth${DISPLAY_NUM} add :${DISPLAY_NUM} . $(mcookie 2>/dev/null || echo "0000000000000000000000000000000000000000")
+fi
+
+# Export environment variables
+export DISPLAY=:${DISPLAY_NUM}
+export XAUTHORITY=/tmp/.Xauth${DISPLAY_NUM}
+
+# Execute the command
+if [ $# -eq 0 ]; then
+    echo "Usage: xvfb-run command [args...]"
+    kill $XVFB_PID 2>/dev/null
+    exit 1
+fi
+
+# Run the command and capture exit code
+"$@"
+EXIT_CODE=$?
+
+# Clean up
+kill $XVFB_PID 2>/dev/null
+rm -f /tmp/.Xauth${DISPLAY_NUM}
+
+exit $EXIT_CODE
