@@ -99,12 +99,12 @@ jobs:
           "
         fi
 
-  # Test AWS Lambda compatibility (Amazon Linux 2 container)
+  # Test AWS Lambda compatibility using official Lambda runtime image
   test-lambda:
-    name: Test Lambda (Amazon Linux 2) Node ${{ matrix.node-version }}
+    name: Test Lambda Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
     container:
-      image: amazonlinux:2
+      image: public.ecr.aws/lambda/nodejs:${{ matrix.node-version }}
 
     strategy:
       fail-fast: false
@@ -114,13 +114,7 @@ jobs:
     steps:
     - name: Install system dependencies
       run: |
-        yum update -y
-        yum install -y git tar gzip xz
-
-    - name: Install Node.js ${{ matrix.node-version }}
-      run: |
-        curl -fsSL https://rpm.nodesource.com/setup_${{ matrix.node-version }}.x | bash -
-        yum install -y nodejs
+        dnf install -y git tar gzip xz findutils
 
     - name: Checkout repository
       uses: actions/checkout@v4
