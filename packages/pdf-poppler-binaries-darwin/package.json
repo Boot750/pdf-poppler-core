@@ -23,8 +23,6 @@
   ],
   "author": "Beat Bächi",
   "license": "ISC",
-  "os": ["darwin"],
-  "cpu": ["x64"],
   "files": [
     "index.js",
     "lib",

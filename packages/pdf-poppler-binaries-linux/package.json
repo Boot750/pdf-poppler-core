@@ -24,8 +24,6 @@
   ],
   "author": "Beat Bächi",
   "license": "ISC",
-  "os": ["linux"],
-  "cpu": ["x64"],
   "files": [
     "index.js",
     "lib",
