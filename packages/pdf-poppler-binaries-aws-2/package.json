@@ -1,0 +1,33 @@
+{
+  "name": "pdf-poppler-binaries-aws-2",
+  "version": "0.0.2-beta",
+  "description": "Poppler binaries for AWS Lambda (Amazon Linux 2). Compatible with GLIBC 2.26. Includes Xvfb for headless PDF rendering.",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boot750/pdf-poppler-core.git",
+    "directory": "packages/pdf-poppler-binaries-aws-2"
+  },
+  "homepage": "https://github.com/Boot750/pdf-poppler-core#readme",
+  "bugs": {
+    "url": "https://github.com/Boot750/pdf-poppler-core/issues"
+  },
+  "keywords": [
+    "pdf",
+    "poppler",
+    "aws",
+    "lambda",
+    "amazon-linux-2",
+    "binaries",
+    "pdf2image",
+    "serverless"
+  ],
+  "author": "Beat Bächi",
+  "license": "ISC",
+  "files": [
+    "index.js",
+    "lib",
+    "README.md",
+    "LICENSE"
+  ]
+}

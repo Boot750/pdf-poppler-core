@@ -27,6 +27,7 @@ echo "Package versions to publish:"
 echo "  pdf-poppler-core:            $(grep '"version"' packages/pdf-poppler-core/package.json | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')"
 echo "  pdf-poppler-binaries-linux:  $(grep '"version"' packages/pdf-poppler-binaries-linux/package.json | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')"
 echo "  pdf-poppler-binaries-win32:  $(grep '"version"' packages/pdf-poppler-binaries-win32/package.json | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')"
+echo "  pdf-poppler-binaries-aws-2:  $(grep '"version"' packages/pdf-poppler-binaries-aws-2/package.json | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')"
 echo ""
 echo -e "${YELLOW}Note: pdf-poppler-binaries-darwin is not included in this release${NC}"
 echo ""
@@ -67,7 +68,21 @@ fi
 cd ../..
 
 echo ""
-echo -e "${BLUE}Step 3: Publishing pdf-poppler-core...${NC}"
+echo -e "${BLUE}Step 3: Publishing pdf-poppler-binaries-aws-2...${NC}"
+cd packages/pdf-poppler-binaries-aws-2
+npm pack --dry-run
+echo ""
+read -p "Publish pdf-poppler-binaries-aws-2? (yes/no): " confirm_aws2
+if [ "$confirm_aws2" = "yes" ]; then
+    npm publish --access public --tag beta
+    echo -e "${GREEN}✓ pdf-poppler-binaries-aws-2 published!${NC}"
+else
+    echo -e "${YELLOW}Skipped pdf-poppler-binaries-aws-2${NC}"
+fi
+cd ../..
+
+echo ""
+echo -e "${BLUE}Step 4: Publishing pdf-poppler-core...${NC}"
 cd packages/pdf-poppler-core
 npm run build
 npm pack --dry-run
@@ -90,8 +105,10 @@ echo "Verify on npm:"
 echo "• https://www.npmjs.com/package/pdf-poppler-core"
 echo "• https://www.npmjs.com/package/pdf-poppler-binaries-linux"
 echo "• https://www.npmjs.com/package/pdf-poppler-binaries-win32"
+echo "• https://www.npmjs.com/package/pdf-poppler-binaries-aws-2"
 echo ""
 echo "Test installation:"
 echo "  mkdir /tmp/test && cd /tmp/test"
-echo "  npm install pdf-poppler-core pdf-poppler-binaries-linux"
+echo "  npm install pdf-poppler-core pdf-poppler-binaries-linux  # For Linux"
+echo "  npm install pdf-poppler-core pdf-poppler-binaries-aws-2  # For AWS Lambda"
 echo ""

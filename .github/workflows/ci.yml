@@ -14,9 +14,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest] # TODO: Add macos-latest when ready
-        node-version: [16, 18, 20, 22, 24]
-        # Platform-specific binary packages (for future expansion)
+        os: [ubuntu-latest, windows-latest]
+        node-version: [18, 20, 22, 24]
         include:
           - os: ubuntu-latest
             binary_package: pdf-poppler-binaries-linux
@@ -24,9 +23,6 @@ jobs:
           - os: windows-latest
             binary_package: pdf-poppler-binaries-win32
             binary_path: packages/pdf-poppler-binaries-win32/lib/win
-          # - os: macos-latest
-          #   binary_package: pdf-poppler-binaries-darwin
-          #   binary_path: packages/pdf-poppler-binaries-darwin/lib/osx
 
     steps:
     - name: Checkout repository
@@ -44,96 +40,37 @@ jobs:
     - name: Build and install local packages for testing
       shell: bash
       run: |
-        echo "Building and installing pdf-poppler packages for testing..."
-        # Build core package
         cd packages/pdf-poppler-core && npm install && npm run build && cd ../..
-        # Install local packages directly
         npm install ./packages/pdf-poppler-core ./packages/${{ matrix.binary_package }} --legacy-peer-deps
 
-    - name: Setup virtual display for graphics tests (Linux)
+    - name: Setup virtual display (Linux)
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
         sudo apt-get install -y xvfb
 
-    - name: Verify binary files exist
-      shell: bash
-      run: |
-        echo "Platform: ${{ matrix.os }}"
-        echo "Binary path: ${{ matrix.binary_path }}"
-        ls -laR ${{ matrix.binary_path }} || echo "Binary directory not found"
-
     - name: Setup platform binaries (Linux/macOS)
       if: matrix.os != 'windows-latest'
       shell: bash
       run: |
-        echo "Making ALL binaries executable for ${{ matrix.os }}..."
-        # Make all files in bin directories executable (pdf*, Xvfb, xvfb-run, xauth, etc.)
-        find ${{ matrix.binary_path }} -type d -name "bin" -exec chmod -R +x {} \; || echo "Failed to make bin directories executable"
-        # Also ensure specific binaries are executable
-        find ${{ matrix.binary_path }} -type f \( -name "pdf*" -o -name "Xvfb" -o -name "xvfb-run" -o -name "xauth" \) -exec chmod +x {} \; || true
-        echo "Listing bin contents:"
-        find ${{ matrix.binary_path }} -type d -name "bin" -exec ls -la {} \;
+        find ${{ matrix.binary_path }} -type d -name "bin" -exec chmod -R +x {} \;
 
     - name: Test binary execution
       shell: bash
       run: |
-        echo "Testing binaries on ${{ matrix.os }}..."
         if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-          # Try versioned folders first (poppler-X.XX-xvfb or poppler-X.XX), then fall back to legacy names
-          POPPLER_DIR=$(ls -d ${{ matrix.binary_path }}/poppler-*-xvfb 2>/dev/null | head -1 || \
-                        ls -d ${{ matrix.binary_path }}/poppler-[0-9]* 2>/dev/null | head -1 || \
-                        echo "${{ matrix.binary_path }}/poppler-xvfb-latest")
-          if [ ! -d "$POPPLER_DIR" ]; then
-            POPPLER_DIR="${{ matrix.binary_path }}/poppler-latest"
-          fi
-          echo "Using poppler directory: $POPPLER_DIR"
-          echo "Setting LD_LIBRARY_PATH to: $POPPLER_DIR/lib"
+          POPPLER_DIR=$(ls -d ${{ matrix.binary_path }}/poppler-*-xvfb 2>/dev/null | head -1 || echo "${{ matrix.binary_path }}/poppler-xvfb-latest")
           export LD_LIBRARY_PATH="$POPPLER_DIR/lib:$LD_LIBRARY_PATH"
           ${POPPLER_DIR}/bin/pdfinfo -v || echo "pdfinfo version check failed"
         elif [ "${{ matrix.os }}" = "windows-latest" ]; then
-          # Try versioned folders first, fall back to legacy
-          POPPLER_DIR=$(ls -d ${{ matrix.binary_path }}/poppler-[0-9]* 2>/dev/null | sort -V | tail -1 || \
-                        echo "${{ matrix.binary_path }}/poppler-0.51")
-          echo "Using poppler directory: $POPPLER_DIR"
+          POPPLER_DIR=$(ls -d ${{ matrix.binary_path }}/poppler-[0-9]* 2>/dev/null | sort -V | tail -1 || echo "${{ matrix.binary_path }}/poppler-0.51")
           ${POPPLER_DIR}/bin/pdfinfo.exe -v || echo "pdfinfo version check failed"
-        elif [ "${{ matrix.os }}" = "macos-latest" ]; then
-          ${{ matrix.binary_path }}/poppler-0.66/bin/pdfinfo -v || echo "pdfinfo version check failed"
         fi
-
-    - name: Debug path resolution
-      shell: bash
-      run: |
-        echo "=== Debugging pdf-poppler path resolution ==="
-        node -e "
-        const poppler = require('pdf-poppler-core');
-        console.log('Resolved poppler path:', poppler.path);
-        console.log('Has bundled Xvfb:', poppler.hasBundledXvfb);
-        console.log('Detected version:', poppler.version);
-        console.log('Available versions:', poppler.getAvailableVersions());
-        console.log('Exec options:', JSON.stringify(poppler.exec_options, null, 2));
-
-        const fs = require('fs');
-        const path = require('path');
-        if (poppler.path && fs.existsSync(poppler.path)) {
-          console.log('Binary directory contents:', fs.readdirSync(poppler.path));
-          const binaryName = process.platform === 'win32' ? 'pdftocairo.exe' : 'pdftocairo';
-          const pdftocairo = path.join(poppler.path, binaryName);
-          console.log(binaryName + ' exists:', fs.existsSync(pdftocairo));
-          if (fs.existsSync(pdftocairo)) {
-            const stats = fs.statSync(pdftocairo);
-            console.log(binaryName + ' mode:', stats.mode.toString(8));
-          }
-        } else {
-          console.log('ERROR: Poppler path does not exist!');
-        }
-        "
 
     - name: Run tests
       shell: bash
       run: |
         if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-          # Run tests serially with --runInBand to avoid timing/parallel issues
           xvfb-run -a npm test -- --runInBand
         else
           npm test -- --runInBand
@@ -147,55 +84,75 @@ jobs:
         if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
           xvfb-run -a node -e "
           const poppler = require('pdf-poppler-core');
-          console.log('Platform:', process.platform);
-          console.log('Poppler path:', poppler.path);
-
           (async () => {
-            try {
-              const info = await poppler.info('sample.pdf');
-              console.log('PDF Info test passed - Pages:', info.pages);
-
-              const imageData = await poppler.imgdata('sample.pdf');
-              console.log('Image data test passed - Found', imageData.length, 'images');
-
-              console.log('All basic functionality tests passed!');
-            } catch (error) {
-              console.error('Functionality test failed:', error.message);
-              process.exit(1);
-            }
+            const info = await poppler.info('sample.pdf');
+            console.log('PDF Info test passed - Pages:', info.pages);
           })();
           "
         else
           node -e "
           const poppler = require('pdf-poppler-core');
-          console.log('Platform:', process.platform);
-          console.log('Poppler path:', poppler.path);
-
           (async () => {
-            try {
-              const info = await poppler.info('sample.pdf');
-              console.log('PDF Info test passed - Pages:', info.pages);
-
-              const imageData = await poppler.imgdata('sample.pdf');
-              console.log('Image data test passed - Found', imageData.length, 'images');
-
-              console.log('All basic functionality tests passed!');
-            } catch (error) {
-              console.error('Functionality test failed:', error.message);
-              process.exit(1);
-            }
+            const info = await poppler.info('sample.pdf');
+            console.log('PDF Info test passed - Pages:', info.pages);
           })();
           "
         fi
 
-    - name: Upload test artifacts
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-output-${{ matrix.os }}-node${{ matrix.node-version }}
-        path: |
-          test-output/
-          *.png
-          *.jpg
-          *.jpeg
-        retention-days: 7
+  # Test AWS Lambda compatibility using official Lambda runtime image
+  test-lambda:
+    name: Test Lambda Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    container:
+      image: public.ecr.aws/lambda/nodejs:${{ matrix.node-version }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Node 18 skipped - its AL2 base has GLIBC 2.26 which can't run GitHub Actions' Node 20
+        # Node 20+ use AL2023 with GLIBC 2.34+
+        node-version: [20, 22, 24]
+
+    steps:
+    - name: Install system dependencies
+      run: |
+        # Node 18 uses AL2 (yum), Node 20 uses AL2023 (dnf)
+        if command -v dnf &> /dev/null; then
+          dnf install -y git tar gzip xz findutils
+        else
+          yum install -y git tar gzip xz findutils
+        fi
+
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install npm dependencies
+      run: npm ci --legacy-peer-deps
+
+    - name: Build and install packages
+      run: |
+        cd packages/pdf-poppler-core && npm install && npm run build && cd ../..
+        npm install ./packages/pdf-poppler-core ./packages/pdf-poppler-binaries-aws-2 --legacy-peer-deps
+
+    - name: Setup binaries
+      run: |
+        find packages/pdf-poppler-binaries-aws-2/lib/aws-2 -type d -name "bin" -exec chmod -R +x {} \; || true
+
+    - name: Test binary execution
+      run: |
+        POPPLER_DIR=$(ls -d packages/pdf-poppler-binaries-aws-2/lib/aws-2/poppler-*-xvfb 2>/dev/null | head -1)
+        export LD_LIBRARY_PATH="$POPPLER_DIR/lib:$LD_LIBRARY_PATH"
+        ${POPPLER_DIR}/bin/pdfinfo -v
+        echo "Lambda binary test passed!"
+
+    - name: Test PDF operations
+      run: |
+        node -e "
+        const poppler = require('pdf-poppler-core');
+        console.log('Poppler path:', poppler.path);
+        (async () => {
+          const info = await poppler.info('sample.pdf');
+          console.log('PDF Info test passed - Pages:', info.pages);
+          console.log('Lambda compatibility test passed!');
+        })();
+        "

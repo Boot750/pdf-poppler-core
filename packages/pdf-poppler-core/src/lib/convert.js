@@ -156,24 +156,25 @@ module.exports = function (file, opts) {
             const bundledXvfbPath = path.join(popplerPath, 'xvfb-run');
             const xvfbPaths = [bundledXvfbPath, '/opt/bin/xvfb-run', '/usr/bin/xvfb-run'];
             let xvfbFound = false;
-            
+
             for (const xvfbPath of xvfbPaths) {
                 if (fs.existsSync(xvfbPath)) {
-                    command = xvfbPath;
-                    
-                    // For bundled xvfb-run, use simpler arguments (it handles Xvfb internally)
+                    // For bundled xvfb-run (which is a bash script), we need to invoke it through bash
+                    // because execFile with shell:false can't handle shebang scripts
                     if (xvfbPath === bundledXvfbPath) {
-                        execArgs = [path.join(popplerPath, 'pdftocairo'), ...args];
+                        command = '/bin/bash';
+                        execArgs = [bundledXvfbPath, path.join(popplerPath, 'pdftocairo'), ...args];
                     } else {
+                        command = xvfbPath;
                         execArgs = ['-a', '--server-args=-screen 0 1024x768x24', path.join(popplerPath, 'pdftocairo'), ...args];
                     }
-                    
+
                     xvfbFound = true;
-                    
+
                     // Ensure environment variables are properly passed to xvfb-run
                     // This is critical for system xvfb-run to find our bundled libraries
-                    execOptions.env = { 
-                        ...process.env, 
+                    execOptions.env = {
+                        ...process.env,
                         ...execOptions.env,
                         // Explicitly set DISPLAY for virtual display
                         DISPLAY: ':99'

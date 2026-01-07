@@ -1,6 +1,6 @@
 {
   "name": "pdf-poppler-core",
-  "version": "0.0.3-beta",
+  "version": "0.0.6-beta",
   "description": "Convert PDF files into images using Poppler with promises. Core wrapper package without binaries. Requires a platform-specific binary package.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -44,7 +44,8 @@
   "peerDependencies": {
     "pdf-poppler-binaries-linux": ">=0.0.1-beta",
     "pdf-poppler-binaries-win32": ">=0.0.1-beta",
-    "pdf-poppler-binaries-darwin": ">=0.0.1-beta"
+    "pdf-poppler-binaries-darwin": ">=0.0.1-beta",
+    "pdf-poppler-binaries-aws-2": ">=0.0.1-beta"
   },
   "peerDependenciesMeta": {
     "pdf-poppler-binaries-linux": {
@@ -54,6 +55,9 @@
       "optional": true
     },
     "pdf-poppler-binaries-darwin": {
+      "optional": true
+    },
+    "pdf-poppler-binaries-aws-2": {
       "optional": true
     }
   },
