@@ -109,12 +109,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [18, 20]
+        node-version: [18, 20, 22, 24]
 
     steps:
     - name: Install system dependencies
       run: |
-        dnf install -y git tar gzip xz findutils
+        # Node 18 uses AL2 (yum), Node 20 uses AL2023 (dnf)
+        if command -v dnf &> /dev/null; then
+          dnf install -y git tar gzip xz findutils
+        else
+          yum install -y git tar gzip xz findutils
+        fi
 
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -129,7 +134,7 @@ jobs:
 
     - name: Setup binaries
       run: |
-        find packages/pdf-poppler-binaries-aws-2/lib/aws-2 -type d -name "bin" -exec chmod -R +x {} \;
+        find packages/pdf-poppler-binaries-aws-2/lib/aws-2 -type d -name "bin" -exec chmod -R +x {} \; || true
 
     - name: Test binary execution
       run: |
