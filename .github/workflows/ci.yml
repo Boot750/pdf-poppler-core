@@ -109,7 +109,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [18, 20, 22, 24]
+        # Node 18 skipped - its AL2 base has GLIBC 2.26 which can't run GitHub Actions' Node 20
+        # Node 20+ use AL2023 with GLIBC 2.34+
+        node-version: [20, 22, 24]
 
     steps:
     - name: Install system dependencies
