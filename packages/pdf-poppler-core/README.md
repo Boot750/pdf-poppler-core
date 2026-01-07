@@ -91,11 +91,57 @@ info(pdfPath).then(pdfInfo => {
 });
 ```
 
+## Custom Binary Configuration
+
+You can use your own Poppler binaries instead of the bundled packages. This is useful for:
+- Using system-installed Poppler
+- Using a custom-compiled version
+- Supporting platforms not covered by the bundled packages
+
+### Using a Custom Binary Path
+
+Set the `POPPLER_BINARY_PATH` environment variable to point directly to the folder containing Poppler executables:
+
+```bash
+# Linux/macOS
+export POPPLER_BINARY_PATH=/usr/local/bin
+node app.js
+
+# Windows
+set POPPLER_BINARY_PATH=C:\poppler\bin
+node app.js
+```
+
+The folder should contain executables like `pdfinfo`, `pdftocairo`, `pdfimages` (or `.exe` versions on Windows).
+
+### Using a Custom Binary Package
+
+Set the `POPPLER_BINARY_PACKAGE` environment variable to use a different npm package:
+
+```bash
+export POPPLER_BINARY_PACKAGE=my-custom-poppler-binaries
+node app.js
+```
+
+The custom package should export a `getBinaryPath()` function that returns the path to the binaries.
+
+### Checking Configuration
+
+You can check if custom binaries are being used:
+
+```javascript
+const pdf = require('pdf-poppler-core');
+
+console.log('Binary path:', pdf.path);
+console.log('Using custom binaries:', pdf.isCustomBinaries);
+```
+
 ## Platform Support
 
 - **Linux** (x64) - Including AWS Lambda
 - **Windows** (x64)
 - **macOS** (x64)
+- **Other platforms** - Supported via custom binary configuration
 
 ## AWS Lambda Support
 

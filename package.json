@@ -49,9 +49,9 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "pdf-poppler-core": "file:packages/pdf-poppler-core",
+    "pdf-poppler-binaries-darwin": "file:packages/pdf-poppler-binaries-darwin",
     "pdf-poppler-binaries-linux": "file:packages/pdf-poppler-binaries-linux",
     "pdf-poppler-binaries-win32": "file:packages/pdf-poppler-binaries-win32",
-    "pdf-poppler-binaries-darwin": "file:packages/pdf-poppler-binaries-darwin"
+    "pdf-poppler-core": "file:packages/pdf-poppler-core"
   }
 }
