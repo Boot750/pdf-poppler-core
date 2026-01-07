@@ -12,8 +12,17 @@ interface VersionInfo {
     path: string;
 }
 
-if (!['darwin', 'win32', 'linux'].includes(platform)) {
-    console.error(`${platform} is NOT supported.`);
+// Custom binary configuration via environment variables
+// POPPLER_BINARY_PATH: Direct path to the bin folder containing poppler binaries
+// POPPLER_BINARY_PACKAGE: Name of a custom npm package that provides binaries
+const customBinaryPath = process.env.POPPLER_BINARY_PATH;
+const customBinaryPackage = process.env.POPPLER_BINARY_PACKAGE;
+
+// Track if using custom configuration
+let usingCustomBinaries = false;
+
+if (!customBinaryPath && !['darwin', 'win32', 'linux'].includes(platform)) {
+    console.error(`${platform} is NOT supported. You can set POPPLER_BINARY_PATH to use custom binaries.`);
     process.exit(1);
 }
 
@@ -49,8 +58,56 @@ function resolveBinaryPackage(packageName: string): string | null {
     }
 }
 
-// Get binary path from platform-specific package
+// Validate that a binary path contains required executables
+function validateBinaryPath(binPath: string): boolean {
+    const binaryName = platform === 'win32' ? 'pdftocairo.exe' : 'pdftocairo';
+    return fs.existsSync(path.join(binPath, binaryName));
+}
+
+// Get binary path from platform-specific package or custom configuration
 function getBinaryPath(): string {
+    // Priority 1: Custom binary path (direct path to bin folder)
+    if (customBinaryPath) {
+        const resolvedPath = path.resolve(customBinaryPath);
+        if (!fs.existsSync(resolvedPath)) {
+            throw new Error(`Custom binary path not found: ${resolvedPath}`);
+        }
+        if (!validateBinaryPath(resolvedPath)) {
+            console.warn(`Warning: pdftocairo not found in custom path: ${resolvedPath}`);
+        }
+        usingCustomBinaries = true;
+        return resolvedPath;
+    }
+
+    // Priority 2: Custom binary package
+    if (customBinaryPackage) {
+        const resolvedPath = resolveBinaryPackage(customBinaryPackage);
+        if (!resolvedPath) {
+            throw new Error(
+                `Custom binary package '${customBinaryPackage}' not found. ` +
+                `Please install it using: npm install ${customBinaryPackage}`
+            );
+        }
+        try {
+            const binaryPackage = require(customBinaryPackage);
+            if (typeof binaryPackage.getBinaryPath === 'function') {
+                usingCustomBinaries = true;
+                return binaryPackage.getBinaryPath();
+            } else {
+                // Package doesn't export getBinaryPath, use package directory
+                const packageDir = path.dirname(resolvedPath);
+                usingCustomBinaries = true;
+                return packageDir;
+            }
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            throw new Error(
+                `Failed to load custom binary package '${customBinaryPackage}': ${errorMessage}`
+            );
+        }
+    }
+
+    // Priority 3: Default platform-specific package
     const packageMap: Record<string, string> = {
         'linux': 'pdf-poppler-binaries-linux',
         'win32': 'pdf-poppler-binaries-win32',
@@ -60,7 +117,10 @@ function getBinaryPath(): string {
     const binaryPackageName = packageMap[platform];
 
     if (!binaryPackageName) {
-        throw new Error(`Unsupported platform: ${platform}`);
+        throw new Error(
+            `Unsupported platform: ${platform}. ` +
+            `Set POPPLER_BINARY_PATH or POPPLER_BINARY_PACKAGE to use custom binaries.`
+        );
     }
 
     const resolvedPath = resolveBinaryPackage(binaryPackageName);
@@ -68,7 +128,8 @@ function getBinaryPath(): string {
     if (!resolvedPath) {
         throw new Error(
             `Binary package '${binaryPackageName}' not found. ` +
-            `Please install it using: npm install ${binaryPackageName}`
+            `Please install it using: npm install ${binaryPackageName}\n` +
+            `Or set POPPLER_BINARY_PATH to use custom binaries.`
         );
     }
 
@@ -157,7 +218,14 @@ function selectPopplerVersion(binaryBasePath: string, preferXvfb: boolean, isWin
 }
 
 // Platform-specific setup
-if (platform === 'win32') {
+if (customBinaryPath) {
+    // Custom binary path is used directly - it should point to the bin folder
+    popplerPath = path.resolve(customBinaryPath);
+
+    // for electron ASAR
+    popplerPath = popplerPath.replace('.asar', '.asar.unpacked');
+}
+else if (platform === 'win32') {
     const binaryBasePath = getBinaryPath();
 
     // Try versioned folder selection first
@@ -352,6 +420,7 @@ export {
     execOptions as exec_options,
     isLambda,
     usingBundledXvfb as hasBundledXvfb,
+    usingCustomBinaries as isCustomBinaries,
     detectedVersion as version,
     getAvailableVersions
 };
