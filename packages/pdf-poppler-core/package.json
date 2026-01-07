@@ -1,6 +1,6 @@
 {
   "name": "pdf-poppler-core",
-  "version": "0.0.5-beta",
+  "version": "0.0.6-beta",
   "description": "Convert PDF files into images using Poppler with promises. Core wrapper package without binaries. Requires a platform-specific binary package.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
