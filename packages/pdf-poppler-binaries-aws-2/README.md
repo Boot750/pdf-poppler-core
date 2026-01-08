@@ -14,24 +14,46 @@ This package provides binaries specifically compiled on Amazon Linux 2 for full 
 npm install pdf-poppler-core pdf-poppler-binaries-aws-2
 ```
 
-## Usage with pdf-poppler-core
+## Usage
 
 ```javascript
-const pdfPoppler = require('pdf-poppler-core');
+const { PdfPoppler } = require('pdf-poppler-core');
 
-// The core package will auto-detect this binary package on Lambda
+// Create instance for Lambda (xvfb not required)
+const poppler = new PdfPoppler({
+    isLambda: true,
+    preferXvfb: false
+});
+
+// Lambda handler
+exports.handler = async (event) => {
+    const info = await poppler.info('/tmp/document.pdf');
+    console.log('Pages:', info.pages);
+
+    await poppler.convert('/tmp/document.pdf', {
+        format: 'png',
+        out_dir: '/tmp',
+        out_prefix: 'page',
+        page: 1
+    });
+
+    return { statusCode: 200 };
+};
 ```
 
-Or explicitly configure:
+## Configuration
+
+The `preferXvfb: false` setting is recommended for Lambda. The binaries work without a virtual display.
 
 ```javascript
-// Set environment variable before requiring pdf-poppler-core
-process.env.POPPLER_BINARY_PACKAGE = 'pdf-poppler-binaries-aws-2';
-
-const pdfPoppler = require('pdf-poppler-core');
+// Recommended Lambda configuration
+const poppler = new PdfPoppler({
+    isLambda: true,
+    preferXvfb: false
+});
 ```
 
-## Included binaries
+## Included Binaries
 
 - `pdfinfo` - PDF document information
 - `pdftotext` - PDF to text conversion
@@ -41,15 +63,20 @@ const pdfPoppler = require('pdf-poppler-core');
 - `pdffonts` - List fonts used in PDF
 - `pdfseparate` - Split PDF pages
 - `pdfunite` - Merge PDF files
-- `Xvfb` - Virtual framebuffer for headless rendering
-- `xvfb-run` - Wrapper script for Xvfb
 
 ## Compatibility
 
-- AWS Lambda (Node.js 14.x, 16.x, 18.x, 20.x runtimes)
+- AWS Lambda (Node.js 18.x, 20.x, 22.x runtimes)
 - Amazon Linux 2
 - Any Linux with GLIBC 2.26+
 
 ## License
 
 ISC
+
+## Related Packages
+
+- [pdf-poppler-core](https://npmjs.com/package/pdf-poppler-core) - Core wrapper (required)
+- [pdf-poppler-binaries-linux](https://npmjs.com/package/pdf-poppler-binaries-linux) - Standard Linux binaries
+- [pdf-poppler-binaries-win32](https://npmjs.com/package/pdf-poppler-binaries-win32) - Windows binaries
+- [pdf-poppler-binaries-darwin](https://npmjs.com/package/pdf-poppler-binaries-darwin) - macOS binaries

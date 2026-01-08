@@ -582,9 +582,16 @@ export class PdfPoppler {
     let execOptions = { ...this.execOptions };
 
     // Handle virtual display for headless Linux environments
-    const needsXvfb = this.envDetector.needsVirtualDisplay();
+    // Only use xvfb if:
+    // 1. preferXvfb is true (or not explicitly disabled)
+    // 2. Environment needs virtual display
+    // 3. Platform is Linux
+    const useXvfb =
+      this.resolvedConfig.preferXvfb !== false &&
+      this.envDetector.needsVirtualDisplay() &&
+      this.resolvedConfig.platform === 'linux';
 
-    if (needsXvfb && this.resolvedConfig.platform === 'linux') {
+    if (useXvfb) {
       const xvfbResult = this.setupXvfb(command, args, execOptions);
       command = xvfbResult.command;
       execArgs = xvfbResult.args;
@@ -592,6 +599,28 @@ export class PdfPoppler {
     }
 
     return { command, execArgs, execOptions };
+  }
+
+  /**
+   * Fix CRLF line endings in a shell script
+   * Returns the path to use (original or fixed temp file)
+   */
+  private fixScriptLineEndings(scriptPath: string): string {
+    try {
+      const scriptContent = fs.readFileSync(scriptPath, 'utf8');
+      if (scriptContent.includes('\r')) {
+        // Fix CRLF line endings (npm/git on Windows may convert them)
+        const fixedContent = scriptContent
+          .replace(/\r\n/g, '\n')
+          .replace(/\r/g, '\n');
+        const tempScript = '/tmp/xvfb-run-fixed';
+        fs.writeFileSync(tempScript, fixedContent, { mode: 0o755 });
+        return tempScript;
+      }
+    } catch {
+      // If we can't read/fix, return original
+    }
+    return scriptPath;
   }
 
   /**
@@ -616,29 +645,19 @@ export class PdfPoppler {
           env: { ...options.env, DISPLAY: ':99' },
         };
 
-        if (xvfbPath === bundledXvfb) {
-          // Fix CRLF line endings at runtime (npm/git may convert them)
-          let scriptPath = bundledXvfb;
-          try {
-            const scriptContent = fs.readFileSync(bundledXvfb, 'utf8');
-            if (scriptContent.includes('\r')) {
-              const fixedContent = scriptContent
-                .replace(/\r\n/g, '\n')
-                .replace(/\r/g, '\n');
-              const tempScript = '/tmp/xvfb-run-fixed';
-              fs.writeFileSync(tempScript, fixedContent, { mode: 0o755 });
-              scriptPath = tempScript;
-            }
-          } catch {
-            // If we can't fix, try with original
-          }
+        // Fix CRLF line endings if needed and get the script path to use
+        const scriptPath = this.fixScriptLineEndings(xvfbPath);
+        const wasFixed = scriptPath !== xvfbPath;
 
+        // Use bash wrapper for bundled scripts or fixed scripts
+        if (wasFixed || xvfbPath === bundledXvfb) {
           return {
             command: '/bin/bash',
             args: [scriptPath, originalCommand, ...args],
             options: newOptions,
           };
         } else {
+          // System xvfb-run can be executed directly
           return {
             command: xvfbPath,
             args: [
