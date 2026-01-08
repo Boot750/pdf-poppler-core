@@ -253,3 +253,6 @@ local/
 
 # Application specific
 test-malformed.pdf
+
+# Claude local files
+.claude/

@@ -1,5 +1,7 @@
 # pdf-poppler-binaries-linux
 
+> **Beta Software:** This project is in early beta. Interface changes may occur frequently. When breaking changes happen, the minor version will be incremented. Not recommended for production use yet.
+
 Linux binaries for [pdf-poppler-core](https://npmjs.com/package/pdf-poppler-core).
 
 This package contains pre-compiled Poppler utilities for Linux (x64).

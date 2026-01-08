@@ -1,6 +1,6 @@
 {
   "name": "pdf-poppler-binaries-win32",
-  "version": "0.0.4-beta",
+  "version": "0.1.0-beta",
   "description": "Windows binaries for pdf-poppler. Includes Poppler utilities compiled for Windows (x64).",
   "main": "index.js",
   "repository": {

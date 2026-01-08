@@ -1,6 +1,6 @@
 {
   "name": "pdf-poppler-binaries-linux",
-  "version": "0.0.4-beta",
+  "version": "0.1.0-beta",
   "description": "Linux binaries for pdf-poppler. Includes Poppler utilities compiled for Linux (x64) with optional Xvfb support for headless environments.",
   "main": "index.js",
   "repository": {

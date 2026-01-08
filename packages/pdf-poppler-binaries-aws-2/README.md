@@ -1,5 +1,7 @@
 # pdf-poppler-binaries-aws-2
 
+> **Beta Software:** This project is in early beta. Interface changes may occur frequently. When breaking changes happen, the minor version will be incremented. Not recommended for production use yet.
+
 Poppler binaries compiled for **AWS Lambda** (Amazon Linux 2, GLIBC 2.26).
 
 ## Why this package?

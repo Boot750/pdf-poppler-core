@@ -1,5 +1,7 @@
 # pdf-poppler-core
 
+> **Beta Software:** This project is in early beta. Interface changes may occur frequently. When breaking changes happen, the minor version will be incremented. Not recommended for production use yet.
+
 Convert PDF files into images using Poppler with promises. It achieves 10x faster performance compared to other PDF converters.
 
 This is the core wrapper package that requires platform-specific binary packages to be installed separately.

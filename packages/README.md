@@ -1,5 +1,7 @@
 # pdf-poppler Monorepo
 
+> **Beta Software:** This project is in early beta. Interface changes may occur frequently. When breaking changes happen, the minor version will be incremented. Not recommended for production use yet.
+
 This repository contains the pdf-poppler packages for converting PDF files to images.
 
 ## Packages
