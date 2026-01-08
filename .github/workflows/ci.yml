@@ -83,16 +83,18 @@ jobs:
       run: |
         if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
           xvfb-run -a node -e "
-          const poppler = require('pdf-poppler-core');
+          const { PdfPoppler } = require('pdf-poppler-core');
           (async () => {
+            const poppler = new PdfPoppler();
             const info = await poppler.info('sample.pdf');
             console.log('PDF Info test passed - Pages:', info.pages);
           })();
           "
         else
           node -e "
-          const poppler = require('pdf-poppler-core');
+          const { PdfPoppler } = require('pdf-poppler-core');
           (async () => {
+            const poppler = new PdfPoppler();
             const info = await poppler.info('sample.pdf');
             console.log('PDF Info test passed - Pages:', info.pages);
           })();
@@ -148,9 +150,10 @@ jobs:
     - name: Test PDF operations
       run: |
         node -e "
-        const poppler = require('pdf-poppler-core');
-        console.log('Poppler path:', poppler.path);
+        const { PdfPoppler } = require('pdf-poppler-core');
         (async () => {
+          const poppler = new PdfPoppler({ isLambda: true, preferXvfb: false });
+          console.log('Poppler path:', poppler.getPath());
           const info = await poppler.info('sample.pdf');
           console.log('PDF Info test passed - Pages:', info.pages);
           console.log('Lambda compatibility test passed!');

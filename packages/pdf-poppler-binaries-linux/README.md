@@ -1,30 +1,64 @@
 # pdf-poppler-binaries-linux
 
+> **Beta Software:** This project is in early beta. Interface changes may occur frequently. When breaking changes happen, the minor version will be incremented. Not recommended for production use yet.
+
 Linux binaries for [pdf-poppler-core](https://npmjs.com/package/pdf-poppler-core).
 
-This package contains pre-compiled Poppler utilities for Linux (x64), including support for headless environments with bundled Xvfb.
+This package contains pre-compiled Poppler utilities for Linux (x64).
 
 ## Installation
-
-```bash
-npm install pdf-poppler-binaries-linux
-```
-
-**Note:** You also need to install `pdf-poppler-core` to use these binaries.
 
 ```bash
 npm install pdf-poppler-core pdf-poppler-binaries-linux
 ```
 
+## Usage
+
+```javascript
+const { PdfPoppler } = require('pdf-poppler-core');
+
+// Create instance (auto-detects platform)
+const poppler = new PdfPoppler();
+
+// Get PDF info
+const info = await poppler.info('document.pdf');
+console.log('Pages:', info.pages);
+
+// Convert to images
+await poppler.convert('document.pdf', {
+    format: 'png',
+    out_dir: './output',
+    out_prefix: 'page'
+});
+```
+
 ## What's Included
 
 - Poppler utilities compiled for Linux x64
-- Optional Xvfb support for headless environments (AWS Lambda, Docker, etc.)
+- Optional Xvfb support for headless environments
 - All required shared libraries
 
-## AWS Lambda Support
+## Headless Environments
 
-The binaries include everything needed to run in AWS Lambda environments, including virtual display support.
+For Docker, CI/CD, or other headless environments:
+
+```javascript
+const poppler = new PdfPoppler({
+    preferXvfb: true  // Enable xvfb wrapper if needed
+});
+```
+
+Or disable xvfb if not required:
+
+```javascript
+const poppler = new PdfPoppler({
+    preferXvfb: false
+});
+```
+
+## AWS Lambda
+
+For AWS Lambda, use [pdf-poppler-binaries-aws-2](https://npmjs.com/package/pdf-poppler-binaries-aws-2) instead - it's compiled specifically for Amazon Linux 2's GLIBC version.
 
 ## System Requirements
 
@@ -38,5 +72,6 @@ ISC
 ## Related Packages
 
 - [pdf-poppler-core](https://npmjs.com/package/pdf-poppler-core) - Core wrapper (required)
+- [pdf-poppler-binaries-aws-2](https://npmjs.com/package/pdf-poppler-binaries-aws-2) - AWS Lambda binaries
 - [pdf-poppler-binaries-win32](https://npmjs.com/package/pdf-poppler-binaries-win32) - Windows binaries
 - [pdf-poppler-binaries-darwin](https://npmjs.com/package/pdf-poppler-binaries-darwin) - macOS binaries

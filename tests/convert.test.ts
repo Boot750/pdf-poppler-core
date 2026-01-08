@@ -1,22 +1,22 @@
 import * as path from 'path';
 import * as fs from 'fs';
-
-// Use pdf-poppler-core package (linked locally in CI/CD)
-const poppler = require('pdf-poppler-core');
+import { PdfPoppler } from 'pdf-poppler-core';
 
 describe('PDF Convert Functionality', () => {
   const samplePdfPath = path.join(__dirname, '..', 'sample.pdf');
   const testOutputDir = path.join(__dirname, '..', 'test-output');
+  let poppler: PdfPoppler;
 
   beforeAll(async () => {
     expect(fs.existsSync(samplePdfPath)).toBe(true);
+    poppler = new PdfPoppler();
+
     // Create test output directory if it doesn't exist
     if (!fs.existsSync(testOutputDir)) {
       fs.mkdirSync(testOutputDir, { recursive: true });
     }
 
     // Warmup: Run a quick conversion to initialize pdftocairo/libraries
-    // This helps avoid timing issues with the first few tests
     try {
       await poppler.convert(samplePdfPath, {
         format: 'png',
@@ -32,10 +32,9 @@ describe('PDF Convert Functionality', () => {
     } catch (e) {
       console.warn('Warmup conversion failed:', e);
     }
-  }, 15000); // 15 second timeout for warmup
+  }, 15000);
 
   beforeEach(() => {
-    // Ensure test output directory exists before each test
     if (!fs.existsSync(testOutputDir)) {
       fs.mkdirSync(testOutputDir, { recursive: true });
     }
@@ -44,7 +43,7 @@ describe('PDF Convert Functionality', () => {
   describe('poppler.convert() - Basic Conversion', () => {
     it('should convert PDF to PNG format', async () => {
       const options = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: testOutputDir,
         out_prefix: 'test-png-page',
         page: null
@@ -59,26 +58,23 @@ describe('PDF Convert Functionality', () => {
 
       await poppler.convert(samplePdfPath, options);
 
-      // Small delay to ensure file system operations complete
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Check that PNG files were created
       const files = fs.readdirSync(testOutputDir);
       const pngFiles = files.filter(file => file.startsWith('test-png-page') && file.endsWith('.png'));
 
       expect(pngFiles.length).toBeGreaterThan(0);
 
-      // Verify file size is reasonable (not empty)
       pngFiles.forEach(file => {
         const filePath = path.join(testOutputDir, file);
         const stats = fs.statSync(filePath);
-        expect(stats.size).toBeGreaterThan(1000); // At least 1KB
+        expect(stats.size).toBeGreaterThan(1000);
       });
-    }, 10000); // 10 second timeout
+    }, 10000);
 
     it('should convert PDF to JPEG format', async () => {
       const options = {
-        format: 'jpeg',
+        format: 'jpeg' as const,
         out_dir: testOutputDir,
         out_prefix: 'test-jpeg-page',
         page: null
@@ -86,23 +82,21 @@ describe('PDF Convert Functionality', () => {
 
       await poppler.convert(samplePdfPath, options);
 
-      // Check that JPEG files were created
       const files = fs.readdirSync(testOutputDir);
       const jpegFiles = files.filter(file => file.startsWith('test-jpeg-page') && file.endsWith('.jpg'));
 
       expect(jpegFiles.length).toBeGreaterThan(0);
 
-      // Verify file size is reasonable
       jpegFiles.forEach(file => {
         const filePath = path.join(testOutputDir, file);
         const stats = fs.statSync(filePath);
-        expect(stats.size).toBeGreaterThan(500); // At least 500B (JPEG is more compressed)
+        expect(stats.size).toBeGreaterThan(500);
       });
     });
 
     it('should convert single page when page option is specified', async () => {
       const options = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: testOutputDir,
         out_prefix: 'test-single-page',
         page: 1
@@ -110,7 +104,6 @@ describe('PDF Convert Functionality', () => {
 
       await poppler.convert(samplePdfPath, options);
 
-      // Check that exactly one PNG file was created
       const files = fs.readdirSync(testOutputDir);
       const pngFiles = files.filter(file => file.startsWith('test-single-page') && file.endsWith('.png'));
 
@@ -120,7 +113,7 @@ describe('PDF Convert Functionality', () => {
 
     it('should handle different scale options', async () => {
       const options = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: testOutputDir,
         out_prefix: 'test-scale-512',
         page: 1,
@@ -134,7 +127,6 @@ describe('PDF Convert Functionality', () => {
 
       expect(pngFiles.length).toBe(1);
 
-      // Verify the file exists and has content
       const filePath = path.join(testOutputDir, pngFiles[0]);
       const stats = fs.statSync(filePath);
       expect(stats.size).toBeGreaterThan(1000);
@@ -142,8 +134,7 @@ describe('PDF Convert Functionality', () => {
   });
 
   describe('poppler.convert() - Format Support', () => {
-    // Formats that support scaling and work reliably across platforms
-    const reliableScalableFormats = ['png', 'jpeg'];
+    const reliableScalableFormats: Array<'png' | 'jpeg'> = ['png', 'jpeg'];
 
     reliableScalableFormats.forEach(format => {
       it(`should support ${format} format`, async () => {
@@ -159,10 +150,9 @@ describe('PDF Convert Functionality', () => {
       });
     });
 
-    // TIFF format may have platform-specific limitations
     it('should support tiff format (with platform considerations)', async () => {
       const options = {
-        format: 'tiff',
+        format: 'tiff' as const,
         out_dir: testOutputDir,
         out_prefix: 'test-format-tiff',
         page: 1,
@@ -171,21 +161,18 @@ describe('PDF Convert Functionality', () => {
 
       try {
         await poppler.convert(samplePdfPath, options);
-        // If it succeeds, that's great
         expect(true).toBe(true);
       } catch (error: any) {
-        // On Windows, TIFF might fail due to poppler build limitations
         if (process.platform === 'win32' && error.message.includes('Error writing TIFF header')) {
           console.warn('TIFF format not fully supported on this Windows poppler build');
-          expect(true).toBe(true); // Skip test gracefully
+          expect(true).toBe(true);
         } else {
-          throw error; // Re-throw if it's a different error
+          throw error;
         }
       }
     });
 
-    // Formats that don't support scaling
-    const nonScalableFormats = ['pdf', 'ps', 'eps', 'svg'];
+    const nonScalableFormats: Array<'pdf' | 'ps' | 'eps' | 'svg'> = ['pdf', 'ps', 'eps', 'svg'];
 
     nonScalableFormats.forEach(format => {
       it(`should support ${format} format (without scaling)`, async () => {
@@ -194,7 +181,7 @@ describe('PDF Convert Functionality', () => {
           out_dir: testOutputDir,
           out_prefix: `test-format-${format}`,
           page: 1,
-          scale: null // Explicitly set scale to null to avoid default
+          scale: null
         };
 
         await expect(poppler.convert(samplePdfPath, options)).resolves.not.toThrow();
@@ -209,10 +196,8 @@ describe('PDF Convert Functionality', () => {
         page: 1
       };
 
-      // Should not throw error and fallback to default (jpeg)
       await expect(poppler.convert(samplePdfPath, options)).resolves.not.toThrow();
 
-      // Check that a JPEG file was created (default format)
       const files = fs.readdirSync(testOutputDir);
       const jpegFiles = files.filter(file => file.startsWith('test-unsupported') && file.endsWith('.jpg'));
 
@@ -227,9 +212,8 @@ describe('PDF Convert Functionality', () => {
         out_prefix: 'test-defaults'
       };
 
-      await poppler.convert(samplePdfPath, minimalOptions as any);
+      await poppler.convert(samplePdfPath, minimalOptions);
 
-      // Should create JPEG files (default format)
       const files = fs.readdirSync(testOutputDir);
       const jpegFiles = files.filter(file => file.startsWith('test-defaults') && file.endsWith('.jpg'));
 
@@ -238,22 +222,21 @@ describe('PDF Convert Functionality', () => {
 
     it('should handle missing out_dir by using default', async () => {
       const options = {
-        format: 'png',
-        out_dir: '.', // Provide current directory instead of null
+        format: 'png' as const,
+        out_dir: '.',
         out_prefix: 'test-no-dir',
         page: 1
       };
 
-      // Should not throw error
       await expect(poppler.convert(samplePdfPath, options)).resolves.not.toThrow();
     });
 
     it('should handle numeric page values correctly', async () => {
       const options = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: testOutputDir,
         out_prefix: 'test-numeric-page',
-        page: '1' as any // String that should be parsed as number
+        page: '1' as any
       };
 
       await poppler.convert(samplePdfPath, options);
@@ -268,7 +251,7 @@ describe('PDF Convert Functionality', () => {
   describe('poppler.convert() - Error Handling', () => {
     it('should handle non-existent PDF file', async () => {
       const options = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: testOutputDir,
         out_prefix: 'test-error',
         page: 1
@@ -281,7 +264,7 @@ describe('PDF Convert Functionality', () => {
 
     it('should handle invalid PDF file', async () => {
       const options = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: testOutputDir,
         out_prefix: 'test-invalid',
         page: 1
@@ -294,7 +277,7 @@ describe('PDF Convert Functionality', () => {
 
     it('should handle invalid output directory gracefully', async () => {
       const options = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: '/invalid/directory/path',
         out_prefix: 'test-invalid-dir',
         page: 1
@@ -305,7 +288,7 @@ describe('PDF Convert Functionality', () => {
 
     it('should provide meaningful error messages', async () => {
       const options = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: testOutputDir,
         out_prefix: 'test-error',
         page: 1
@@ -328,7 +311,7 @@ describe('PDF Convert Functionality', () => {
   describe('poppler.convert() - File Output Verification', () => {
     it('should create files with correct naming pattern', async () => {
       const options = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: testOutputDir,
         out_prefix: 'test-naming',
         page: null
@@ -339,7 +322,6 @@ describe('PDF Convert Functionality', () => {
       const files = fs.readdirSync(testOutputDir);
       const pngFiles = files.filter(file => file.startsWith('test-naming') && file.endsWith('.png'));
 
-      // Verify naming pattern: prefix-pageNumber.extension
       pngFiles.forEach(file => {
         expect(file).toMatch(/^test-naming-\d+\.png$/);
       });
@@ -347,7 +329,7 @@ describe('PDF Convert Functionality', () => {
 
     it('should handle special characters in output prefix', async () => {
       const options = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: testOutputDir,
         out_prefix: 'test-special_chars-123',
         page: 1
@@ -363,7 +345,7 @@ describe('PDF Convert Functionality', () => {
 
     it('should verify file integrity by checking file headers', async () => {
       const options = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: testOutputDir,
         out_prefix: 'test-integrity',
         page: 1
@@ -376,7 +358,6 @@ describe('PDF Convert Functionality', () => {
 
       expect(pngFiles.length).toBe(1);
 
-      // Check PNG header
       const pngPath = path.join(testOutputDir, pngFiles[0]);
       const buffer = fs.readFileSync(pngPath);
 

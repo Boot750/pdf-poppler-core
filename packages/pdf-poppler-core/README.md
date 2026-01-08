@@ -1,5 +1,7 @@
 # pdf-poppler-core
 
+> **Beta Software:** This project is in early beta. Interface changes may occur frequently. When breaking changes happen, the minor version will be incremented. Not recommended for production use yet.
+
 Convert PDF files into images using Poppler with promises. It achieves 10x faster performance compared to other PDF converters.
 
 This is the core wrapper package that requires platform-specific binary packages to be installed separately.
@@ -40,41 +42,109 @@ Both packages will be available during development, but only the Linux binaries 
 
 ## Usage
 
-### Get PDF info
+### Basic Usage
 
 ```javascript
-const pdf = require('pdf-poppler-core');
+const { PdfPoppler } = require('pdf-poppler-core');
 
-let file = 'C:\\tmp\\convertme.pdf'
+// Create an instance (auto-detects platform)
+const poppler = new PdfPoppler();
 
-pdf.info(file)
-    .then(pdfinfo => {
-        console.log(pdfinfo);
-    });
+// Get PDF info
+const info = await poppler.info('/path/to/file.pdf');
+console.log(info.pages, info.page_size);
+
+// Convert PDF to images
+await poppler.convert('/path/to/file.pdf', {
+    format: 'png',
+    out_dir: '/output/directory',
+    out_prefix: 'page',
+    scale: 1024
+});
+
+// Get embedded image data
+const images = await poppler.imgdata('/path/to/file.pdf');
 ```
 
-### Convert PDF into image
+### Factory Methods
 
 ```javascript
-const path = require('path');
-const pdf = require('pdf-poppler-core');
+const { PdfPoppler } = require('pdf-poppler-core');
 
-let file = 'C:\\tmp\\convertme.pdf'
+// For AWS Lambda (auto-configures xvfb and Lambda settings)
+const lambdaPoppler = PdfPoppler.forLambda();
 
-let opts = {
-    format: 'jpeg',
-    out_dir: path.dirname(file),
-    out_prefix: path.basename(file, path.extname(file)),
-    page: null
-}
+// For CI environments
+const ciPoppler = PdfPoppler.forCI();
 
-pdf.convert(file, opts)
-    .then(res => {
-        console.log('Successfully converted');
-    })
-    .catch(error => {
-        console.error(error);
-    })
+// With custom binary path
+const customPoppler = PdfPoppler.withBinaryPath('/custom/poppler/bin');
+
+// Auto-detect everything
+const autoPoppler = PdfPoppler.autoDetect();
+```
+
+### Builder Pattern
+
+```javascript
+const { PdfPoppler } = require('pdf-poppler-core');
+
+const config = PdfPoppler.configure()
+    .withOsBinary()           // Use auto-detected OS binaries
+    .withPreferXvfb(false)    // Disable xvfb preference
+    .withVersion('24.02')     // Use specific version
+    .withMaxBuffer(10 * 1024 * 1024)  // Set max buffer
+    .build();
+
+const poppler = new PdfPoppler(config);
+```
+
+### Full Configuration
+
+```javascript
+const { PdfPoppler } = require('pdf-poppler-core');
+
+const poppler = new PdfPoppler({
+    binaryPath: '/custom/path/to/bin',     // Optional: explicit binary path
+    preferXvfb: true,                       // Optional: prefer xvfb variant
+    version: '24.02',                       // Optional: specific version
+    isLambda: true,                         // Optional: force Lambda mode
+    isCI: false,                            // Optional: force CI mode
+    execOptions: {
+        maxBuffer: 10 * 1024 * 1024,        // Optional: buffer size
+        timeout: 30000                       // Optional: timeout in ms
+    }
+});
+```
+
+### Instance Methods
+
+```javascript
+const poppler = new PdfPoppler();
+
+// Get PDF metadata
+const info = await poppler.info('/path/to/file.pdf');
+
+// Convert PDF to images
+await poppler.convert('/path/to/file.pdf', {
+    format: 'png',       // 'png' | 'jpeg' | 'tiff' | 'pdf' | 'ps' | 'eps' | 'svg'
+    out_dir: './output', // Output directory
+    out_prefix: 'page',  // Output filename prefix
+    page: 1,             // Specific page (null for all pages)
+    scale: 1024          // Scale (only for png, jpeg, tiff)
+});
+
+// Get embedded image data
+const images = await poppler.imgdata('/path/to/file.pdf');
+
+// Utility methods
+poppler.getPath();              // Get binary path
+poppler.getVersion();           // Get detected version
+poppler.getAvailableVersions(); // Get all available versions
+poppler.isLambdaEnvironment();  // Check if Lambda mode
+poppler.hasBundledXvfb();       // Check if using xvfb
+poppler.getConfig();            // Get resolved configuration
+poppler.getExecOptions();       // Get execution options
 ```
 
 ### TypeScript Support
@@ -82,59 +152,31 @@ pdf.convert(file, opts)
 This package is written in TypeScript and includes type definitions.
 
 ```typescript
-import { info, convert } from 'pdf-poppler-core';
+import { PdfPoppler, PdfInfo, ConvertOptions } from 'pdf-poppler-core';
 
-const pdfPath = './document.pdf';
+const poppler = new PdfPoppler();
 
-info(pdfPath).then(pdfInfo => {
-    console.log(pdfInfo);
-});
+const info: PdfInfo = await poppler.info('./document.pdf');
+console.log(info.pages, info.width_in_pts, info.height_in_pts);
+
+const options: ConvertOptions = {
+    format: 'png',
+    out_dir: './output',
+    scale: 800
+};
+await poppler.convert('./document.pdf', options);
 ```
 
-## Custom Binary Configuration
+## Environment Variables
 
-You can use your own Poppler binaries instead of the bundled packages. This is useful for:
-- Using system-installed Poppler
-- Using a custom-compiled version
-- Supporting platforms not covered by the bundled packages
+The following environment variables can configure behavior:
 
-### Using a Custom Binary Path
-
-Set the `POPPLER_BINARY_PATH` environment variable to point directly to the folder containing Poppler executables:
-
-```bash
-# Linux/macOS
-export POPPLER_BINARY_PATH=/usr/local/bin
-node app.js
-
-# Windows
-set POPPLER_BINARY_PATH=C:\poppler\bin
-node app.js
-```
-
-The folder should contain executables like `pdfinfo`, `pdftocairo`, `pdfimages` (or `.exe` versions on Windows).
-
-### Using a Custom Binary Package
-
-Set the `POPPLER_BINARY_PACKAGE` environment variable to use a different npm package:
-
-```bash
-export POPPLER_BINARY_PACKAGE=my-custom-poppler-binaries
-node app.js
-```
-
-The custom package should export a `getBinaryPath()` function that returns the path to the binaries.
-
-### Checking Configuration
-
-You can check if custom binaries are being used:
-
-```javascript
-const pdf = require('pdf-poppler-core');
-
-console.log('Binary path:', pdf.path);
-console.log('Using custom binaries:', pdf.isCustomBinaries);
-```
+| Variable | Description |
+|----------|-------------|
+| `POPPLER_BINARY_PATH` | Direct path to poppler bin directory |
+| `POPPLER_BINARY_PACKAGE` | Custom npm package for binaries |
+| `POPPLER_VERSION` | Preferred poppler version |
+| `POPPLER_PREFER_XVFB` | Set to 'false' to disable xvfb |
 
 ## Platform Support
 
@@ -145,7 +187,23 @@ console.log('Using custom binaries:', pdf.isCustomBinaries);
 
 ## AWS Lambda Support
 
-This package works in AWS Lambda environments. The Linux binaries include support for headless environments with bundled Xvfb.
+This package works in AWS Lambda environments. Use the `forLambda()` factory method for optimal configuration:
+
+```javascript
+const { PdfPoppler } = require('pdf-poppler-core');
+
+const poppler = PdfPoppler.forLambda();
+
+exports.handler = async (event) => {
+    const info = await poppler.info('/tmp/document.pdf');
+    await poppler.convert('/tmp/document.pdf', {
+        format: 'png',
+        out_dir: '/tmp',
+        out_prefix: 'page'
+    });
+    return { statusCode: 200 };
+};
+```
 
 ## Electron Support
 

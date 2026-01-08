@@ -1,15 +1,15 @@
 import * as path from 'path';
 import * as fs from 'fs';
-
-// Use pdf-poppler-core package (linked locally in CI/CD)
-const poppler = require('pdf-poppler-core');
+import { PdfPoppler } from 'pdf-poppler-core';
 
 describe.skip('Integration Tests', () => {
   const samplePdfPath = path.join(__dirname, '..', 'sample.pdf');
   const testOutputDir = path.join(__dirname, '..', 'test-output');
+  let poppler: PdfPoppler;
 
   beforeAll(() => {
     expect(fs.existsSync(samplePdfPath)).toBe(true);
+    poppler = new PdfPoppler();
   });
 
   describe('End-to-End PDF Processing', () => {
@@ -28,7 +28,7 @@ describe.skip('Integration Tests', () => {
 
       // Step 3: Convert to images
       const convertOptions = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: testOutputDir,
         out_prefix: 'integration-test',
         page: null
@@ -54,7 +54,7 @@ describe.skip('Integration Tests', () => {
     });
 
     it('should handle different format conversions consistently', async () => {
-      const formats = ['png', 'jpeg'];
+      const formats: Array<'png' | 'jpeg'> = ['png', 'jpeg'];
       const results: { [key: string]: string[] } = {};
 
       for (const format of formats) {
@@ -110,7 +110,7 @@ describe.skip('Integration Tests', () => {
 
       // Run conversion multiple times
       const options = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: testOutputDir,
         out_prefix: 'consistency-test',
         page: 1
@@ -134,13 +134,13 @@ describe.skip('Integration Tests', () => {
         poppler.info(samplePdfPath),
         poppler.imgdata(samplePdfPath),
         poppler.convert(samplePdfPath, {
-          format: 'png',
+          format: 'png' as const,
           out_dir: testOutputDir,
           out_prefix: 'concurrent-1',
           page: 1
         }),
         poppler.convert(samplePdfPath, {
-          format: 'jpeg',
+          format: 'jpeg' as const,
           out_dir: testOutputDir,
           out_prefix: 'concurrent-2',
           page: 1
@@ -172,7 +172,7 @@ describe.skip('Integration Tests', () => {
     it('should recover from temporary file system issues', async () => {
       // Test with invalid output directory first
       const invalidOptions = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: '/invalid/path/that/does/not/exist',
         out_prefix: 'recovery-test',
         page: 1
@@ -182,7 +182,7 @@ describe.skip('Integration Tests', () => {
 
       // Should still work with valid options after error
       const validOptions = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: testOutputDir,
         out_prefix: 'recovery-test-valid',
         page: 1
@@ -201,7 +201,7 @@ describe.skip('Integration Tests', () => {
         poppler.info(samplePdfPath), // Valid
         poppler.info('non-existent.pdf'), // Invalid
         poppler.convert(samplePdfPath, { // Valid
-          format: 'png',
+          format: 'png' as const,
           out_dir: testOutputDir,
           out_prefix: 'mixed-ops-valid',
           page: 1
@@ -224,7 +224,7 @@ describe.skip('Integration Tests', () => {
   describe('Data Integrity', () => {
     it('should produce consistent image outputs for same input', async () => {
       const options = {
-        format: 'png',
+        format: 'png' as const,
         out_dir: testOutputDir,
         out_prefix: 'integrity-test-1',
         page: 1

@@ -1,23 +1,25 @@
 # pdf-poppler Monorepo
 
-This repository contains the restructured pdf-poppler packages.
+> **Beta Software:** This project is in early beta. Interface changes may occur frequently. When breaking changes happen, the minor version will be incremented. Not recommended for production use yet.
+
+This repository contains the pdf-poppler packages for converting PDF files to images.
 
 ## Packages
 
 ### [pdf-poppler-core](./pdf-poppler-core)
 
-Core wrapper package written in TypeScript. Contains all the JavaScript logic for interacting with Poppler utilities.
+Core wrapper package written in TypeScript. Provides the `PdfPoppler` class for all PDF operations.
 
 - **Install:** `npm install pdf-poppler-core`
 - **Requires:** One of the binary packages below
 
 ### [pdf-poppler-binaries-linux](./pdf-poppler-binaries-linux)
 
-Linux x64 binaries for Poppler, including Xvfb support for headless environments.
+Linux x64 binaries for Poppler.
 
 - **Install:** `npm install pdf-poppler-binaries-linux`
 - **Platform:** Linux x64
-- **Use case:** Production servers, Docker, AWS Lambda
+- **Use case:** Production servers, Docker, CI/CD
 
 ### [pdf-poppler-binaries-win32](./pdf-poppler-binaries-win32)
 
@@ -34,6 +36,14 @@ macOS x64 binaries for Poppler.
 - **Install:** `npm install pdf-poppler-binaries-darwin`
 - **Platform:** macOS x64
 - **Use case:** macOS development/production
+
+### [pdf-poppler-binaries-aws-2](./pdf-poppler-binaries-aws-2)
+
+AWS Lambda binaries compiled for Amazon Linux 2.
+
+- **Install:** `npm install pdf-poppler-binaries-aws-2`
+- **Platform:** Amazon Linux 2 (GLIBC 2.26)
+- **Use case:** AWS Lambda functions
 
 ## Quick Start
 
@@ -52,19 +62,55 @@ npm install pdf-poppler-core pdf-poppler-binaries-win32
 npm install pdf-poppler-core pdf-poppler-binaries-darwin
 ```
 
+### AWS Lambda
+```bash
+npm install pdf-poppler-core pdf-poppler-binaries-aws-2
+```
+
 ### Mixed (Windows dev, Linux prod)
 ```bash
 npm install pdf-poppler-core pdf-poppler-binaries-linux
 npm install --save-dev pdf-poppler-binaries-win32
 ```
 
-## Documentation
+## Usage
 
-- [Migration Guide](./MIGRATION.md) - Detailed migration instructions
-- [Core Package README](./pdf-poppler-core/README.md)
-- [Linux Binaries README](./pdf-poppler-binaries-linux/README.md)
-- [Windows Binaries README](./pdf-poppler-binaries-win32/README.md)
-- [macOS Binaries README](./pdf-poppler-binaries-darwin/README.md)
+```javascript
+const { PdfPoppler } = require('pdf-poppler-core');
+
+// Create instance
+const poppler = new PdfPoppler();
+
+// Get PDF info
+const info = await poppler.info('document.pdf');
+console.log('Pages:', info.pages);
+
+// Convert to images
+await poppler.convert('document.pdf', {
+    format: 'png',
+    out_dir: './output',
+    out_prefix: 'page'
+});
+```
+
+### AWS Lambda
+
+```javascript
+const { PdfPoppler } = require('pdf-poppler-core');
+
+const poppler = new PdfPoppler({
+    isLambda: true,
+    preferXvfb: false
+});
+
+exports.handler = async (event) => {
+    await poppler.convert('/tmp/input.pdf', {
+        format: 'png',
+        out_dir: '/tmp'
+    });
+    return { statusCode: 200 };
+};
+```
 
 ## Development
 
@@ -79,7 +125,7 @@ npm run build
 ### Testing
 
 ```bash
-cd packages/pdf-poppler-core
+# From repo root
 npm test
 ```
 

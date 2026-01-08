@@ -1,14 +1,14 @@
 import * as path from 'path';
 import * as fs from 'fs';
-
-// Use pdf-poppler-core package (linked locally in CI/CD)
-const poppler = require('pdf-poppler-core');
+import { PdfPoppler } from 'pdf-poppler-core';
 
 describe('PDF Info Functionality', () => {
   const samplePdfPath = path.join(__dirname, '..', 'sample.pdf');
+  let poppler: PdfPoppler;
 
   beforeAll(() => {
     expect(fs.existsSync(samplePdfPath)).toBe(true);
+    poppler = new PdfPoppler();
   });
 
   describe('poppler.info()', () => {
@@ -23,9 +23,6 @@ describe('PDF Info Functionality', () => {
       expect(info).toHaveProperty('page_size');
       expect(info).toHaveProperty('width_in_pts');
       expect(info).toHaveProperty('height_in_pts');
-
-      // Optional properties that may or may not be present
-      // expect(info).toHaveProperty('title'); // Not all PDFs have titles
     });
 
     it('should parse page dimensions correctly', async () => {
@@ -67,10 +64,6 @@ describe('PDF Info Functionality', () => {
       requiredProperties.forEach(prop => {
         expect(info).toHaveProperty(prop);
       });
-
-      // Common optional properties
-      const optionalProperties = ['title', 'creator', 'producer', 'pdf_version'];
-      // These may or may not be present depending on the PDF
 
       // Check that property names follow the expected format
       Object.keys(info).forEach(key => {

@@ -1,14 +1,14 @@
 import * as path from 'path';
 import * as fs from 'fs';
-
-// Use pdf-poppler-core package (linked locally in CI/CD)
-const poppler = require('pdf-poppler-core');
+import { PdfPoppler } from 'pdf-poppler-core';
 
 describe('PDF Image Data Functionality', () => {
   const samplePdfPath = path.join(__dirname, '..', 'sample.pdf');
+  let poppler: PdfPoppler;
 
   beforeAll(() => {
     expect(fs.existsSync(samplePdfPath)).toBe(true);
+    poppler = new PdfPoppler();
   });
 
   describe('poppler.imgdata()', () => {
