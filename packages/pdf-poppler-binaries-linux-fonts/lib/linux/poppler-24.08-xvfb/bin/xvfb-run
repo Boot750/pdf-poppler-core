@@ -1,0 +1,12 @@
+#!/bin/sh
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DISPLAY=:99
+export DISPLAY
+"$SCRIPT_DIR/Xvfb" $DISPLAY -screen 0 1024x768x24 &
+XVFB_PID=$!
+sleep 0.1
+"$@"
+EXIT_CODE=$?
+kill $XVFB_PID 2>/dev/null
+exit $EXIT_CODE
