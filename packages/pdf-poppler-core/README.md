@@ -16,6 +16,16 @@ You need to install both the core package and the platform-specific binary packa
 npm install pdf-poppler-core pdf-poppler-binaries-linux
 ```
 
+### For Linux with PDF Form Filling (Lambda/Serverless)
+
+If you need to fill PDF forms (with libraries like `pdf-lib`) and convert them to images, use the fonts package:
+
+```bash
+npm install pdf-poppler-core pdf-poppler-binaries-linux-fonts
+```
+
+This package bundles Liberation Sans fonts and fontconfig, ensuring form field text renders correctly in environments without system fonts.
+
 ### For Windows (Development/Production)
 
 ```bash
@@ -216,5 +226,6 @@ ISC
 ## Related Packages
 
 - [pdf-poppler-binaries-linux](https://npmjs.com/package/pdf-poppler-binaries-linux) - Linux binaries
+- [pdf-poppler-binaries-linux-fonts](https://npmjs.com/package/pdf-poppler-binaries-linux-fonts) - Linux binaries with bundled fonts (for PDF form filling)
 - [pdf-poppler-binaries-win32](https://npmjs.com/package/pdf-poppler-binaries-win32) - Windows binaries
 - [pdf-poppler-binaries-darwin](https://npmjs.com/package/pdf-poppler-binaries-darwin) - macOS binaries
