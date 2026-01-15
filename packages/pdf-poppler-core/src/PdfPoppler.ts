@@ -44,6 +44,7 @@ export class PdfPoppler {
   private readonly binaryPath: string;
   private readonly execOptions: ExecFileOptions;
   private readonly envDetector: EnvironmentDetector;
+  private readonly fontconfigEnv: Record<string, string> | null;
 
   /**
    * Create a new PdfPoppler instance
@@ -58,6 +59,9 @@ export class PdfPoppler {
     // Resolve binary path based on final configuration
     const resolver = new BinaryResolver(this.resolvedConfig);
     this.binaryPath = resolver.resolve();
+
+    // Get fontconfig env if available (from fonts package)
+    this.fontconfigEnv = resolver.getFontconfigEnv();
 
     // Build exec options
     this.execOptions = this.buildExecOptions();
@@ -179,6 +183,140 @@ export class PdfPoppler {
         }
         resolve(stdout as string);
       });
+    });
+  }
+
+  /**
+   * Flatten PDF by rendering with pdftocairo -pdf
+   * This converts form fields and annotations to static content
+   * @param file - Path to the PDF file
+   * @param outputPath - Output path for flattened PDF
+   * @returns Path to flattened PDF
+   */
+  async flatten(file: string, outputPath: string): Promise<string> {
+    const validatedFile = this.validatePdfPath(file);
+    const binary = path.join(this.binaryPath, this.getBinaryName('pdftocairo'));
+
+    const args = ['-pdf', validatedFile, outputPath];
+
+    return new Promise((resolve, reject) => {
+      execFile(binary, args, this.execOptions, (error, stdout, stderr) => {
+        if (error) {
+          return reject(this.wrapError(error, stderr as string));
+        }
+        resolve(outputPath);
+      });
+    });
+  }
+
+  /**
+   * Flatten PDF from buffer by rendering with pdftocairo -pdf
+   * Uses stdin to pass PDF data directly without writing to disk first
+   * @param pdfBuffer - PDF data as Buffer or Uint8Array
+   * @param outputPath - Output path for flattened PDF
+   * @returns Path to flattened PDF
+   */
+  async flattenBuffer(pdfBuffer: Buffer | Uint8Array, outputPath: string): Promise<string> {
+    const { spawn } = require('child_process');
+    const binary = path.join(this.binaryPath, this.getBinaryName('pdftocairo'));
+
+    // Use '-' for stdin input
+    const args = ['-pdf', '-', outputPath];
+
+    return new Promise((resolve, reject) => {
+      const proc = spawn(binary, args, {
+        ...this.execOptions,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let stderr = '';
+      proc.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      proc.on('error', (error: Error) => {
+        reject(this.wrapError(error, stderr));
+      });
+
+      proc.on('close', (code: number) => {
+        if (code !== 0) {
+          reject(new Error(`pdftocairo exited with code ${code}\nStderr: ${stderr}`));
+        } else {
+          resolve(outputPath);
+        }
+      });
+
+      // Write buffer to stdin and close
+      proc.stdin.write(Buffer.from(pdfBuffer));
+      proc.stdin.end();
+    });
+  }
+
+  /**
+   * Convert PDF from buffer to images
+   * Uses stdin to pass PDF data directly without writing to disk first
+   * @param pdfBuffer - PDF data as Buffer or Uint8Array
+   * @param options - Conversion options
+   * @returns stdout from pdftocairo
+   */
+  async convertBuffer(pdfBuffer: Buffer | Uint8Array, options: ConvertOptions = {}): Promise<string> {
+    const { spawn } = require('child_process');
+
+    const outDir = options.out_dir || process.cwd();
+    const outPrefix = options.out_prefix || 'output';
+
+    const validatedOutDir = this.validateOutputDir(outDir);
+    const validatedPrefix = this.validateOutputPrefix(outPrefix);
+
+    const opts = this.mergeConvertOptions(options, validatedOutDir, validatedPrefix);
+
+    // Build args but use '-' for stdin instead of file path
+    const args: string[] = [`-${opts.format}`];
+
+    if (opts.page !== null) {
+      args.push('-f', String(parseInt(String(opts.page))));
+      args.push('-l', String(parseInt(String(opts.page))));
+    }
+    if (opts.scale !== null) {
+      args.push('-scale-to', String(parseInt(String(opts.scale))));
+    }
+    args.push('-'); // stdin input
+    args.push(path.join(opts.out_dir, opts.out_prefix));
+
+    const { command, execArgs, execOptions } = this.prepareConvertExecution(args);
+
+    return new Promise((resolve, reject) => {
+      const proc = spawn(command, execArgs, {
+        ...execOptions,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout.on('data', (data: Buffer) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      proc.on('error', (error: Error) => {
+        reject(this.wrapError(error, stderr));
+      });
+
+      proc.on('close', (code: number) => {
+        if (code !== 0) {
+          reject(new Error(`pdftocairo exited with code ${code}\nStderr: ${stderr}`));
+        } else {
+          resolve(stdout);
+        }
+      });
+
+      // Write buffer to stdin and close
+      proc.stdin.write(Buffer.from(pdfBuffer));
+      proc.stdin.end();
     });
   }
 
@@ -361,6 +499,11 @@ export class PdfPoppler {
       env.LD_LIBRARY_PATH = env.LD_LIBRARY_PATH
         ? `${libPath}:${env.LD_LIBRARY_PATH}`
         : libPath;
+    }
+
+    // Add fontconfig environment variables if available (from fonts package)
+    if (this.fontconfigEnv) {
+      Object.assign(env, this.fontconfigEnv);
     }
 
     // Lambda-specific settings

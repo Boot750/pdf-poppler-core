@@ -1,0 +1,176 @@
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023
+
+# Install poppler, fontconfig, fonts, and dependencies
+RUN dnf install -y \
+    poppler-utils \
+    fontconfig \
+    freetype \
+    liberation-sans-fonts \
+    xorg-x11-server-Xvfb \
+    xauth \
+    && dnf clean all
+
+# Create output directories
+RUN mkdir -p /output/lib/linux/poppler-24.08-xvfb/bin \
+    && mkdir -p /output/lib/linux/poppler-24.08-xvfb/lib \
+    && mkdir -p /output/lib/fontconfig \
+    && mkdir -p /output/lib/fonts
+
+# Copy poppler binaries
+RUN cp /usr/bin/pdftocairo /output/lib/linux/poppler-24.08-xvfb/bin/ \
+    && cp /usr/bin/pdfinfo /output/lib/linux/poppler-24.08-xvfb/bin/ \
+    && cp /usr/bin/pdftotext /output/lib/linux/poppler-24.08-xvfb/bin/ \
+    && cp /usr/bin/pdftoppm /output/lib/linux/poppler-24.08-xvfb/bin/ \
+    && cp /usr/bin/pdftops /output/lib/linux/poppler-24.08-xvfb/bin/ \
+    && cp /usr/bin/pdfimages /output/lib/linux/poppler-24.08-xvfb/bin/ \
+    && cp /usr/bin/pdffonts /output/lib/linux/poppler-24.08-xvfb/bin/ \
+    && cp /usr/bin/pdfunite /output/lib/linux/poppler-24.08-xvfb/bin/ \
+    && cp /usr/bin/pdfseparate /output/lib/linux/poppler-24.08-xvfb/bin/ \
+    && cp /usr/bin/pdfdetach /output/lib/linux/poppler-24.08-xvfb/bin/ \
+    && cp /usr/bin/pdfattach /output/lib/linux/poppler-24.08-xvfb/bin/
+
+# Copy Xvfb binaries
+RUN cp /usr/bin/Xvfb /output/lib/linux/poppler-24.08-xvfb/bin/ \
+    && cp /usr/bin/xauth /output/lib/linux/poppler-24.08-xvfb/bin/
+
+# Copy Liberation Sans fonts
+RUN cp /usr/share/fonts/liberation-sans/*.ttf /output/lib/fonts/
+
+# Create fonts.conf with Helvetica -> Liberation Sans mapping
+# Using prefix="relative" so paths are relative to fonts.conf location
+RUN cat > /output/lib/fontconfig/fonts.conf << 'FONTSEOF'
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+    <!-- Bundled fonts directory - relative to this fonts.conf file -->
+    <dir prefix="relative">../fonts</dir>
+
+    <!-- Fallback to common absolute locations -->
+    <dir>/var/task/node_modules/pdf-poppler-binaries-linux-fonts/lib/fonts</dir>
+    <dir>/opt/nodejs/node_modules/pdf-poppler-binaries-linux-fonts/lib/fonts</dir>
+    <dir>/usr/share/fonts</dir>
+    <dir>/usr/local/share/fonts</dir>
+
+    <!-- Cache directory -->
+    <cachedir>/tmp/fontconfig-cache</cachedir>
+
+    <!-- Default rendering settings -->
+    <match target="font">
+        <edit name="antialias" mode="assign"><bool>true</bool></edit>
+        <edit name="hinting" mode="assign"><bool>true</bool></edit>
+        <edit name="hintstyle" mode="assign"><const>hintslight</const></edit>
+    </match>
+
+    <!-- Map Helvetica to Liberation Sans -->
+    <alias>
+        <family>Helvetica</family>
+        <prefer><family>Liberation Sans</family></prefer>
+    </alias>
+    <alias>
+        <family>Helvetica Neue</family>
+        <prefer><family>Liberation Sans</family></prefer>
+    </alias>
+    <alias>
+        <family>Arial</family>
+        <prefer><family>Liberation Sans</family></prefer>
+    </alias>
+    <alias>
+        <family>sans-serif</family>
+        <prefer><family>Liberation Sans</family></prefer>
+    </alias>
+    <alias>
+        <family>sans</family>
+        <prefer><family>Liberation Sans</family></prefer>
+    </alias>
+</fontconfig>
+FONTSEOF
+
+# Create VERSION file
+RUN echo "24.08.0-fonts" > /output/lib/linux/poppler-24.08-xvfb/VERSION
+
+# Copy required shared libraries
+RUN cp /usr/lib64/libpoppler.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libpoppler-glib.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libcairo.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libfontconfig.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libfreetype.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libpng16.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libjpeg.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libtiff.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libopenjp2.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/liblcms2.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libharfbuzz.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libgraphite2.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libbrotlidec.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libbrotlicommon.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libxml2.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libpixman-1.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libX11.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libXext.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libXrender.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libxcb.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libxcb-render.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libxcb-shm.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libGL.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libEGL.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libSM.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libICE.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libXau.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libXdmcp.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libXfont2.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libfontenc.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libexpat.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libuuid.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libz.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libbz2.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/liblzma.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libglib-2.0.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libpcre2-8.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libwebp.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libjbig.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libglapi.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libGLdispatch.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libGLX.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libnss*.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libnspr*.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libgpgme*.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libgpg-error.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libassuan.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libsystemd.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libsmime3.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libcap.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libgcrypt.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/liblz4.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libzstd.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libssl3.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libnssutil3.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libplc4.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+RUN cp /usr/lib64/libplds4.so* /output/lib/linux/poppler-24.08-xvfb/lib/ 2>/dev/null || true
+
+# Create xvfb-run script
+RUN cat > /output/lib/linux/poppler-24.08-xvfb/bin/xvfb-run << 'XVFBEOF'
+#!/bin/sh
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DISPLAY=:99
+export DISPLAY
+"$SCRIPT_DIR/Xvfb" $DISPLAY -screen 0 1024x768x24 &
+XVFB_PID=$!
+sleep 0.1
+"$@"
+EXIT_CODE=$?
+kill $XVFB_PID 2>/dev/null
+exit $EXIT_CODE
+XVFBEOF
+RUN chmod +x /output/lib/linux/poppler-24.08-xvfb/bin/xvfb-run
+
+# Make all binaries executable
+RUN chmod -R +x /output/lib/linux/poppler-24.08-xvfb/bin/
+
+# List output
+RUN echo "=== Binaries ===" && ls -la /output/lib/linux/poppler-24.08-xvfb/bin/
+RUN echo "=== Libraries ===" && ls -la /output/lib/linux/poppler-24.08-xvfb/lib/ | head -30
+RUN echo "=== Fonts ===" && ls -la /output/lib/fonts/
+RUN echo "=== Fontconfig ===" && ls -la /output/lib/fontconfig/
+
+CMD ["sh", "-c", "cp -r /output/* /export/"]

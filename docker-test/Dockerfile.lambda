@@ -1,0 +1,32 @@
+FROM public.ecr.aws/lambda/nodejs:22
+
+# No system font libraries - using bundled fonts package instead
+
+WORKDIR /var/task
+
+# Copy package files
+COPY package*.json ./
+COPY packages/pdf-poppler-core ./packages/pdf-poppler-core
+COPY packages/pdf-poppler-binaries-linux-fonts ./packages/pdf-poppler-binaries-linux-fonts
+
+# Copy test files
+COPY form_sample.pdf ./
+COPY sample_form.pdf ./
+
+# Install dependencies and build
+RUN npm install --legacy-peer-deps
+RUN cd packages/pdf-poppler-core && npm install && npm run build && cd ../..
+RUN npm install ./packages/pdf-poppler-core ./packages/pdf-poppler-binaries-linux-fonts pdf-lib@1.17.0 --legacy-peer-deps
+
+# Copy test script
+COPY docker-test/test-convert-lambda.js ./
+
+# Create output directory
+RUN mkdir -p /var/task/output
+
+# Make binaries executable
+RUN chmod -R +x /var/task/packages/pdf-poppler-binaries-linux-fonts/
+
+# Override entrypoint for testing
+ENTRYPOINT []
+CMD ["node", "test-convert-lambda.js"]

@@ -83,9 +83,9 @@ export class BinaryResolver {
   private resolvePlatformDefault(): string {
     const platform = this.config.platform;
 
-    // Package candidates by platform
+    // Package candidates by platform (fonts package first for Linux)
     const packageMap: Record<Platform, string[]> = {
-      linux: ['pdf-poppler-binaries-aws-2', 'pdf-poppler-binaries-linux'],
+      linux: ['pdf-poppler-binaries-linux-fonts', 'pdf-poppler-binaries-aws-2', 'pdf-poppler-binaries-linux'],
       win32: ['pdf-poppler-binaries-win32'],
       darwin: ['pdf-poppler-binaries-darwin'],
     };
@@ -265,5 +265,20 @@ export class BinaryResolver {
    */
   private handleAsar(p: string): string {
     return p.replace('.asar', '.asar.unpacked');
+  }
+
+  /**
+   * Get fontconfig environment variables if using fonts package
+   */
+  getFontconfigEnv(): Record<string, string> | null {
+    try {
+      const pkg = require('pdf-poppler-binaries-linux-fonts');
+      if (typeof pkg.getFontconfigEnv === 'function') {
+        return pkg.getFontconfigEnv();
+      }
+    } catch {
+      // Fonts package not installed
+    }
+    return null;
   }
 }

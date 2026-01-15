@@ -1,0 +1,35 @@
+{
+  "name": "pdf-poppler-binaries-linux-fonts",
+  "version": "0.1.2-beta",
+  "description": "Linux binaries for pdf-poppler with bundled fonts. Includes Poppler utilities, fontconfig, and Liberation Sans fonts for environments without system fonts (Lambda, containers).",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Boot750/pdf-poppler-core.git",
+    "directory": "packages/pdf-poppler-binaries-linux-fonts"
+  },
+  "homepage": "https://github.com/Boot750/pdf-poppler-core#readme",
+  "bugs": {
+    "url": "https://github.com/Boot750/pdf-poppler-core/issues"
+  },
+  "keywords": [
+    "pdf",
+    "poppler",
+    "linux",
+    "binaries",
+    "fonts",
+    "fontconfig",
+    "pdf2image",
+    "lambda",
+    "aws",
+    "serverless"
+  ],
+  "author": "Beat Bachi",
+  "license": "ISC",
+  "files": [
+    "index.js",
+    "lib",
+    "README.md",
+    "LICENSE"
+  ]
+}
