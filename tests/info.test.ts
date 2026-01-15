@@ -1,19 +1,22 @@
 import * as path from 'path';
 import * as fs from 'fs';
+import { Readable } from 'stream';
 import { PdfPoppler } from 'pdf-poppler-core';
 
 describe('PDF Info Functionality', () => {
   const samplePdfPath = path.join(__dirname, '..', 'sample.pdf');
   let poppler: PdfPoppler;
+  let samplePdfBuffer: Buffer;
 
   beforeAll(() => {
     expect(fs.existsSync(samplePdfPath)).toBe(true);
     poppler = new PdfPoppler();
+    samplePdfBuffer = fs.readFileSync(samplePdfPath);
   });
 
   describe('poppler.info()', () => {
-    it('should extract basic PDF information', async () => {
-      const info = await poppler.info(samplePdfPath);
+    it('should extract basic PDF information from buffer', async () => {
+      const info = await poppler.info(samplePdfBuffer);
 
       expect(info).toBeDefined();
       expect(typeof info).toBe('object');
@@ -26,7 +29,7 @@ describe('PDF Info Functionality', () => {
     });
 
     it('should parse page dimensions correctly', async () => {
-      const info = await poppler.info(samplePdfPath);
+      const info = await poppler.info(samplePdfBuffer);
 
       expect(info.width_in_pts).toBeGreaterThan(0);
       expect(info.height_in_pts).toBeGreaterThan(0);
@@ -35,26 +38,19 @@ describe('PDF Info Functionality', () => {
     });
 
     it('should parse page count correctly', async () => {
-      const info = await poppler.info(samplePdfPath);
+      const info = await poppler.info(samplePdfBuffer);
 
       expect(info.pages).toBeDefined();
       expect(parseInt(info.pages)).toBeGreaterThan(0);
     });
 
-    it('should handle non-existent file gracefully', async () => {
-      const nonExistentPath = path.join(__dirname, 'non-existent.pdf');
-
-      await expect(poppler.info(nonExistentPath)).rejects.toThrow();
-    });
-
-    it('should handle invalid file type gracefully', async () => {
-      const textFilePath = path.join(__dirname, '..', 'package.json');
-
-      await expect(poppler.info(textFilePath)).rejects.toThrow();
+    it('should handle invalid PDF data gracefully', async () => {
+      const invalidBuffer = Buffer.from('not a pdf file');
+      await expect(poppler.info(invalidBuffer)).rejects.toThrow();
     });
 
     it('should return consistent data structure', async () => {
-      const info = await poppler.info(samplePdfPath);
+      const info = await poppler.info(samplePdfBuffer);
 
       // Verify expected property names (lowercase with underscores)
       const requiredProperties = [
@@ -71,23 +67,26 @@ describe('PDF Info Functionality', () => {
       });
     });
 
-    it('should handle relative and absolute paths', async () => {
-      // Test with relative path
-      const relativeInfo = await poppler.info('sample.pdf');
-      expect(relativeInfo).toBeDefined();
+    it('should work with Uint8Array input', async () => {
+      const uint8Array = new Uint8Array(samplePdfBuffer);
+      const info = await poppler.info(uint8Array);
 
-      // Test with absolute path
-      const absoluteInfo = await poppler.info(path.resolve('sample.pdf'));
-      expect(absoluteInfo).toBeDefined();
+      expect(info).toBeDefined();
+      expect(info.pages).toBeDefined();
+      expect(parseInt(info.pages)).toBeGreaterThan(0);
+    });
 
-      // Results should be the same
-      expect(relativeInfo.pages).toBe(absoluteInfo.pages);
-      expect(relativeInfo.width_in_pts).toBe(absoluteInfo.width_in_pts);
-      expect(relativeInfo.height_in_pts).toBe(absoluteInfo.height_in_pts);
+    it('should work with Readable stream input', async () => {
+      const stream = Readable.from(samplePdfBuffer);
+      const info = await poppler.info(stream);
+
+      expect(info).toBeDefined();
+      expect(info.pages).toBeDefined();
+      expect(parseInt(info.pages)).toBeGreaterThan(0);
     });
 
     it('should parse metadata fields correctly', async () => {
-      const info = await poppler.info(samplePdfPath);
+      const info = await poppler.info(samplePdfBuffer);
 
       // Check that all string values are properly trimmed
       Object.values(info).forEach(value => {
@@ -99,7 +98,7 @@ describe('PDF Info Functionality', () => {
     });
 
     it('should handle PDF with different page sizes consistently', async () => {
-      const info = await poppler.info(samplePdfPath);
+      const info = await poppler.info(samplePdfBuffer);
 
       // Ensure dimensions are positive numbers
       expect(info.width_in_pts).toBeGreaterThan(0);
@@ -112,10 +111,10 @@ describe('PDF Info Functionality', () => {
 
   describe('Error Handling', () => {
     it('should provide meaningful error messages', async () => {
-      await expect(poppler.info('non-existent-file.pdf')).rejects.toThrow();
+      const invalidBuffer = Buffer.from('invalid pdf content');
 
       try {
-        await poppler.info('non-existent-file.pdf');
+        await poppler.info(invalidBuffer);
         fail('Expected an error to be thrown');
       } catch (error: any) {
         expect(error).toBeTruthy();
@@ -125,8 +124,9 @@ describe('PDF Info Functionality', () => {
       }
     });
 
-    it('should handle empty file path', async () => {
-      await expect(poppler.info('')).rejects.toThrow();
+    it('should handle empty buffer', async () => {
+      const emptyBuffer = Buffer.alloc(0);
+      await expect(poppler.info(emptyBuffer)).rejects.toThrow();
     });
 
     it('should handle null/undefined input', async () => {

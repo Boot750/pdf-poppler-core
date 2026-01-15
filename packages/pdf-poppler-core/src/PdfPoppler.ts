@@ -1,7 +1,8 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execFile, ExecFileOptions } from 'child_process';
+import { execFile, spawn, ExecFileOptions } from 'child_process';
+import { Readable, PassThrough } from 'stream';
 import {
   PdfPopplerConfig,
   ConvertOptions,
@@ -11,6 +12,9 @@ import {
   Platform,
   ResolvedConfig,
   OutputFormat,
+  PdfInput,
+  PageResult,
+  PageStreamResult,
 } from './types';
 import { PdfPopplerConfigBuilder, configure } from './PdfPopplerConfig';
 import { BinaryResolver } from './platform/BinaryResolver';
@@ -22,21 +26,33 @@ const FORMATS: OutputFormat[] = ['png', 'jpeg', 'tiff', 'pdf', 'ps', 'eps', 'svg
 /**
  * Main class for PDF operations using Poppler
  *
+ * All operations accept Buffer, Uint8Array, or Readable stream as input.
+ * Output is returned as Buffer or Readable stream (no file I/O).
+ *
  * @example
  * ```typescript
- * // Auto-detect everything
+ * import { PdfPoppler } from 'pdf-poppler-core';
+ * import * as fs from 'fs';
+ *
  * const poppler = new PdfPoppler();
- * const info = await poppler.info('/path/to/file.pdf');
+ * const pdfBuffer = fs.readFileSync('input.pdf');
  *
- * // With configuration
- * const poppler = new PdfPoppler({ preferXvfb: false });
- * await poppler.convert('/path/to/file.pdf', { format: 'png' });
+ * // Get PDF info
+ * const info = await poppler.info(pdfBuffer);
+ * console.log(`Pages: ${info.pages}`);
  *
- * // Using builder
- * const poppler = PdfPoppler.configure()
- *   .withOsBinary()
- *   .withPreferXvfb(false)
- *   .build();
+ * // Convert to image buffers
+ * const pages = await poppler.convert(pdfBuffer, { format: 'png' });
+ * pages.forEach(({ page, data }) => {
+ *   fs.writeFileSync(`page-${page}.png`, data);
+ * });
+ *
+ * // Or get streams for piping
+ * const streams = await poppler.convertToStream(pdfBuffer, { format: 'png' });
+ * streams[0].stream.pipe(fs.createWriteStream('page-1.png'));
+ *
+ * // Flatten PDF (returns buffer)
+ * const flattened = await poppler.flatten(pdfBuffer);
  * ```
  */
 export class PdfPoppler {
@@ -136,159 +152,16 @@ export class PdfPoppler {
 
   /**
    * Get PDF metadata
-   * @param file - Path to the PDF file
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
    */
-  async info(file: string): Promise<PdfInfo> {
-    const validatedFile = this.validatePdfPath(file);
+  async info(input: PdfInput): Promise<PdfInfo> {
+    const pdfBuffer = await this.inputToBuffer(input);
     const binary = path.join(this.binaryPath, this.getBinaryName('pdfinfo'));
 
     return new Promise((resolve, reject) => {
-      execFile(
-        binary,
-        [validatedFile],
-        this.execOptions,
-        (error, stdout, stderr) => {
-          if (error) {
-            return reject(this.wrapError(error, stderr as string));
-          }
-          resolve(this.parseInfo(stdout as string));
-        }
-      );
-    });
-  }
-
-  /**
-   * Convert PDF to images
-   * @param file - Path to the PDF file
-   * @param options - Conversion options
-   */
-  async convert(file: string, options: ConvertOptions = {}): Promise<string> {
-    const validatedFile = this.validatePdfPath(file);
-    const validatedOutDir = this.validateOutputDir(
-      options.out_dir || path.dirname(validatedFile)
-    );
-    const validatedPrefix = this.validateOutputPrefix(
-      options.out_prefix ||
-        path.basename(validatedFile, path.extname(validatedFile))
-    );
-
-    const opts = this.mergeConvertOptions(options, validatedOutDir, validatedPrefix);
-    const args = this.buildConvertArgs(validatedFile, opts);
-    const { command, execArgs, execOptions } = this.prepareConvertExecution(args);
-
-    return new Promise((resolve, reject) => {
-      execFile(command, execArgs, execOptions, (error, stdout, stderr) => {
-        if (error) {
-          return reject(this.wrapError(error, stderr as string));
-        }
-        resolve(stdout as string);
-      });
-    });
-  }
-
-  /**
-   * Flatten PDF by rendering with pdftocairo -pdf
-   * This converts form fields and annotations to static content
-   * @param file - Path to the PDF file
-   * @param outputPath - Output path for flattened PDF
-   * @returns Path to flattened PDF
-   */
-  async flatten(file: string, outputPath: string): Promise<string> {
-    const validatedFile = this.validatePdfPath(file);
-    const binary = path.join(this.binaryPath, this.getBinaryName('pdftocairo'));
-
-    const args = ['-pdf', validatedFile, outputPath];
-
-    return new Promise((resolve, reject) => {
-      execFile(binary, args, this.execOptions, (error, stdout, stderr) => {
-        if (error) {
-          return reject(this.wrapError(error, stderr as string));
-        }
-        resolve(outputPath);
-      });
-    });
-  }
-
-  /**
-   * Flatten PDF from buffer by rendering with pdftocairo -pdf
-   * Uses stdin to pass PDF data directly without writing to disk first
-   * @param pdfBuffer - PDF data as Buffer or Uint8Array
-   * @param outputPath - Output path for flattened PDF
-   * @returns Path to flattened PDF
-   */
-  async flattenBuffer(pdfBuffer: Buffer | Uint8Array, outputPath: string): Promise<string> {
-    const { spawn } = require('child_process');
-    const binary = path.join(this.binaryPath, this.getBinaryName('pdftocairo'));
-
-    // Use '-' for stdin input
-    const args = ['-pdf', '-', outputPath];
-
-    return new Promise((resolve, reject) => {
-      const proc = spawn(binary, args, {
+      const proc = spawn(binary, ['-'], {
         ...this.execOptions,
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-
-      let stderr = '';
-      proc.stderr.on('data', (data: Buffer) => {
-        stderr += data.toString();
-      });
-
-      proc.on('error', (error: Error) => {
-        reject(this.wrapError(error, stderr));
-      });
-
-      proc.on('close', (code: number) => {
-        if (code !== 0) {
-          reject(new Error(`pdftocairo exited with code ${code}\nStderr: ${stderr}`));
-        } else {
-          resolve(outputPath);
-        }
-      });
-
-      // Write buffer to stdin and close
-      proc.stdin.write(Buffer.from(pdfBuffer));
-      proc.stdin.end();
-    });
-  }
-
-  /**
-   * Convert PDF from buffer to images
-   * Uses stdin to pass PDF data directly without writing to disk first
-   * @param pdfBuffer - PDF data as Buffer or Uint8Array
-   * @param options - Conversion options
-   * @returns stdout from pdftocairo
-   */
-  async convertBuffer(pdfBuffer: Buffer | Uint8Array, options: ConvertOptions = {}): Promise<string> {
-    const { spawn } = require('child_process');
-
-    const outDir = options.out_dir || process.cwd();
-    const outPrefix = options.out_prefix || 'output';
-
-    const validatedOutDir = this.validateOutputDir(outDir);
-    const validatedPrefix = this.validateOutputPrefix(outPrefix);
-
-    const opts = this.mergeConvertOptions(options, validatedOutDir, validatedPrefix);
-
-    // Build args but use '-' for stdin instead of file path
-    const args: string[] = [`-${opts.format}`];
-
-    if (opts.page !== null) {
-      args.push('-f', String(parseInt(String(opts.page))));
-      args.push('-l', String(parseInt(String(opts.page))));
-    }
-    if (opts.scale !== null) {
-      args.push('-scale-to', String(parseInt(String(opts.scale))));
-    }
-    args.push('-'); // stdin input
-    args.push(path.join(opts.out_dir, opts.out_prefix));
-
-    const { command, execArgs, execOptions } = this.prepareConvertExecution(args);
-
-    return new Promise((resolve, reject) => {
-      const proc = spawn(command, execArgs, {
-        ...execOptions,
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe'],
       });
 
       let stdout = '';
@@ -308,39 +181,227 @@ export class PdfPoppler {
 
       proc.on('close', (code: number) => {
         if (code !== 0) {
-          reject(new Error(`pdftocairo exited with code ${code}\nStderr: ${stderr}`));
+          reject(new Error(`pdfinfo exited with code ${code}\nStderr: ${stderr}`));
         } else {
-          resolve(stdout);
+          resolve(this.parseInfo(stdout));
         }
       });
 
-      // Write buffer to stdin and close
-      proc.stdin.write(Buffer.from(pdfBuffer));
+      proc.stdin.write(pdfBuffer);
       proc.stdin.end();
     });
   }
 
   /**
-   * Get embedded image data from PDF
-   * @param file - Path to the PDF file
+   * Convert PDF pages to image buffers
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @param options - Conversion options
+   * @returns Array of { page, data: Buffer } for each page
    */
-  async imgdata(file: string): Promise<ImageData[]> {
-    const validatedFile = this.validatePdfPath(file);
-    const binary = path.join(this.binaryPath, this.getBinaryName('pdfimages'));
+  async convert(input: PdfInput, options: ConvertOptions = {}): Promise<PageResult[]> {
+    const pdfBuffer = await this.inputToBuffer(input);
+
+    // Get page count
+    const pdfInfo = await this.info(pdfBuffer);
+    const pageCount = parseInt(pdfInfo.pages, 10);
+
+    // Determine which pages to convert
+    const startPage = options.page ?? 1;
+    const endPage = options.page ?? pageCount;
+
+    const results: PageResult[] = [];
+
+    // Process each page (pdftocairo stdout only supports single page)
+    for (let page = startPage; page <= endPage; page++) {
+      const pageBuffer = await this.convertSinglePageToBuffer(pdfBuffer, page, options);
+      results.push({ page, data: pageBuffer });
+    }
+
+    return results;
+  }
+
+  /**
+   * Convert PDF pages to streams (for piping/streaming)
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @param options - Conversion options
+   * @returns Array of { page, stream: Readable } for each page
+   */
+  async convertToStream(input: PdfInput, options: ConvertOptions = {}): Promise<PageStreamResult[]> {
+    const pdfBuffer = await this.inputToBuffer(input);
+
+    // Get page count
+    const pdfInfo = await this.info(pdfBuffer);
+    const pageCount = parseInt(pdfInfo.pages, 10);
+
+    // Determine which pages to convert
+    const startPage = options.page ?? 1;
+    const endPage = options.page ?? pageCount;
+
+    const results: PageStreamResult[] = [];
+
+    // Process each page
+    for (let page = startPage; page <= endPage; page++) {
+      const stream = this.convertSinglePageToStream(pdfBuffer, page, options);
+      results.push({ page, stream });
+    }
+
+    return results;
+  }
+
+  /**
+   * Flatten PDF (render form fields and annotations to static content)
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @returns Flattened PDF as Buffer
+   */
+  async flatten(input: PdfInput): Promise<Buffer> {
+    const pdfBuffer = await this.inputToBuffer(input);
+    const binary = path.join(this.binaryPath, this.getBinaryName('pdftocairo'));
+
+    // Use '-' for both stdin input and stdout output
+    const args = ['-pdf', '-', '-'];
 
     return new Promise((resolve, reject) => {
-      execFile(
-        binary,
-        [validatedFile, '-list'],
-        this.execOptions,
-        (error, stdout, stderr) => {
-          if (error) {
-            return reject(this.wrapError(error, stderr as string));
-          }
-          resolve(this.parseImgdata(stdout as string));
+      const proc = spawn(binary, args, {
+        ...this.execOptions,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      const chunks: Buffer[] = [];
+      let stderr = '';
+
+      proc.stdout.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+
+      proc.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      proc.on('error', (error: Error) => {
+        reject(this.wrapError(error, stderr));
+      });
+
+      proc.on('close', (code: number) => {
+        if (code !== 0) {
+          reject(new Error(`pdftocairo exited with code ${code}\nStderr: ${stderr}`));
+        } else {
+          resolve(Buffer.concat(chunks));
         }
-      );
+      });
+
+      proc.stdin.write(pdfBuffer);
+      proc.stdin.end();
     });
+  }
+
+  /**
+   * Flatten PDF and return as stream
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @returns Flattened PDF as Readable stream
+   */
+  async flattenToStream(input: PdfInput): Promise<Readable> {
+    const pdfBuffer = await this.inputToBuffer(input);
+    const binary = path.join(this.binaryPath, this.getBinaryName('pdftocairo'));
+    const passThrough = new PassThrough();
+
+    const args = ['-pdf', '-', '-'];
+
+    const proc = spawn(binary, args, {
+      ...this.execOptions,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    proc.stdout.pipe(passThrough);
+
+    proc.stderr.on('data', (data: Buffer) => {
+      // Could emit as warning or store for debugging
+    });
+
+    proc.on('error', (err: Error) => {
+      passThrough.destroy(err);
+    });
+
+    proc.stdin.write(pdfBuffer);
+    proc.stdin.end();
+
+    return passThrough;
+  }
+
+  /**
+   * Get embedded image metadata from PDF
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   */
+  async imgdata(input: PdfInput): Promise<ImageData[]> {
+    const pdfBuffer = await this.inputToBuffer(input);
+    const binary = path.join(this.binaryPath, this.getBinaryName('pdfimages'));
+
+    // On Linux, use /dev/stdin to avoid temp files
+    if (this.resolvedConfig.platform === 'linux') {
+      return new Promise((resolve, reject) => {
+        const proc = spawn(binary, ['/dev/stdin', '-list'], {
+          ...this.execOptions,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        proc.stdout.on('data', (data: Buffer) => {
+          stdout += data.toString();
+        });
+
+        proc.stderr.on('data', (data: Buffer) => {
+          stderr += data.toString();
+        });
+
+        proc.on('error', (error: Error) => {
+          reject(this.wrapError(error, stderr));
+        });
+
+        proc.on('close', (code: number) => {
+          if (code !== 0) {
+            reject(new Error(`pdfimages exited with code ${code}\nStderr: ${stderr}`));
+          } else {
+            resolve(this.parseImgdata(stdout));
+          }
+        });
+
+        proc.stdin.write(pdfBuffer);
+        proc.stdin.end();
+      });
+    }
+
+    // On Windows, we must use a temp file (no /dev/stdin)
+    const tempDir = os.tmpdir();
+    const tempFile = path.join(
+      tempDir,
+      `pdf-poppler-${Date.now()}-${Math.random().toString(36).substring(2, 11)}.pdf`
+    );
+
+    try {
+      fs.writeFileSync(tempFile, pdfBuffer);
+
+      return await new Promise((resolve, reject) => {
+        execFile(
+          binary,
+          [tempFile, '-list'],
+          this.execOptions,
+          (error, stdout, stderr) => {
+            if (error) {
+              return reject(this.wrapError(error, stderr as string));
+            }
+            resolve(this.parseImgdata(stdout as string));
+          }
+        );
+      });
+    } finally {
+      // Clean up temp file
+      try {
+        fs.unlinkSync(tempFile);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
   }
 
   // ===================
@@ -550,64 +611,142 @@ export class PdfPoppler {
   }
 
   /**
-   * Validate PDF file path for security
+   * Convert any input type to Buffer
    */
-  private validatePdfPath(file: string): string {
-    if (typeof file !== 'string') {
-      throw new Error('File path must be a string');
+  private async inputToBuffer(input: PdfInput): Promise<Buffer> {
+    if (Buffer.isBuffer(input)) {
+      return input;
     }
-    if (file.includes('\0')) {
-      throw new Error('Invalid file path: null bytes detected');
+    if (input instanceof Uint8Array) {
+      return Buffer.from(input);
     }
-    const resolved = path.resolve(file);
-    if (!fs.existsSync(resolved)) {
-      throw new Error(`File not found: ${resolved}`);
-    }
-    const stats = fs.statSync(resolved);
-    if (!stats.isFile()) {
-      throw new Error('Path is not a file');
-    }
-    if (!resolved.toLowerCase().endsWith('.pdf')) {
-      throw new Error('File must have .pdf extension');
-    }
-    return resolved;
+
+    // Readable stream - collect chunks
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      input.on('data', (chunk: Buffer | string) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+      input.on('end', () => resolve(Buffer.concat(chunks)));
+      input.on('error', reject);
+    });
   }
 
   /**
-   * Validate output directory for security
+   * Convert a single page to buffer
    */
-  private validateOutputDir(outDir: string): string {
-    if (typeof outDir !== 'string') {
-      throw new Error('Output directory must be a string');
+  private async convertSinglePageToBuffer(
+    pdfBuffer: Buffer,
+    page: number,
+    options: ConvertOptions
+  ): Promise<Buffer> {
+    const format = FORMATS.includes(options.format as OutputFormat)
+      ? (options.format as OutputFormat)
+      : 'png';
+
+    const args: string[] = [`-${format}`, '-singlefile'];
+    args.push('-f', String(page));
+    args.push('-l', String(page));
+
+    // Formats that support scaling
+    const scalableFormats: OutputFormat[] = ['png', 'jpeg', 'tiff'];
+    if (options.scale !== null && options.scale !== undefined && scalableFormats.includes(format)) {
+      args.push('-scale-to', String(parseInt(String(options.scale))));
+    } else if (options.scale === undefined && scalableFormats.includes(format)) {
+      // Default scale for raster formats
+      args.push('-scale-to', '1024');
     }
-    if (outDir.includes('\0')) {
-      throw new Error('Invalid output directory: null bytes detected');
-    }
-    const resolved = path.resolve(outDir);
-    if (!fs.existsSync(resolved)) {
-      throw new Error(`Output directory not found: ${resolved}`);
-    }
-    const stats = fs.statSync(resolved);
-    if (!stats.isDirectory()) {
-      throw new Error('Output path is not a directory');
-    }
-    return resolved;
+
+    args.push('-'); // stdin input
+    args.push('-'); // stdout output
+
+    const { command, execArgs, execOptions } = this.prepareConvertExecution(args);
+
+    return new Promise((resolve, reject) => {
+      const proc = spawn(command, execArgs, {
+        ...execOptions,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      const chunks: Buffer[] = [];
+      let stderr = '';
+
+      proc.stdout.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+
+      proc.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      proc.on('error', (error: Error) => {
+        reject(this.wrapError(error, stderr));
+      });
+
+      proc.on('close', (code: number) => {
+        if (code !== 0) {
+          reject(new Error(`pdftocairo exited with code ${code}\nStderr: ${stderr}`));
+        } else {
+          resolve(Buffer.concat(chunks));
+        }
+      });
+
+      proc.stdin.write(pdfBuffer);
+      proc.stdin.end();
+    });
   }
 
   /**
-   * Validate output prefix for security
+   * Convert a single page to stream
    */
-  private validateOutputPrefix(prefix: string): string {
-    if (typeof prefix !== 'string') {
-      throw new Error('Output prefix must be a string');
+  private convertSinglePageToStream(
+    pdfBuffer: Buffer,
+    page: number,
+    options: ConvertOptions
+  ): Readable {
+    const format = FORMATS.includes(options.format as OutputFormat)
+      ? (options.format as OutputFormat)
+      : 'png';
+
+    const passThrough = new PassThrough();
+
+    const args: string[] = [`-${format}`, '-singlefile'];
+    args.push('-f', String(page));
+    args.push('-l', String(page));
+
+    // Formats that support scaling
+    const scalableFormats: OutputFormat[] = ['png', 'jpeg', 'tiff'];
+    if (options.scale !== null && options.scale !== undefined && scalableFormats.includes(format)) {
+      args.push('-scale-to', String(parseInt(String(options.scale))));
+    } else if (options.scale === undefined && scalableFormats.includes(format)) {
+      // Default scale for raster formats
+      args.push('-scale-to', '1024');
     }
-    if (prefix.includes('\0')) {
-      throw new Error('Invalid output prefix: null bytes detected');
-    }
-    if (prefix.includes('/') || prefix.includes('\\') || prefix.includes('..')) {
-      throw new Error('Output prefix cannot contain path separators');
-    }
-    return prefix;
+
+    args.push('-'); // stdin input
+    args.push('-'); // stdout output
+
+    const { command, execArgs, execOptions } = this.prepareConvertExecution(args);
+
+    const proc = spawn(command, execArgs, {
+      ...execOptions,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    proc.stdout.pipe(passThrough);
+
+    proc.stderr.on('data', () => {
+      // Could emit as warning or store for debugging
+    });
+
+    proc.on('error', (err: Error) => {
+      passThrough.destroy(err);
+    });
+
+    proc.stdin.write(pdfBuffer);
+    proc.stdin.end();
+
+    return passThrough;
   }
 
   /**
@@ -659,60 +798,6 @@ export class PdfPoppler {
   }
 
   /**
-   * Merge convert options with defaults
-   */
-  private mergeConvertOptions(
-    opts: ConvertOptions,
-    outDir: string,
-    outPrefix: string
-  ): Required<ConvertOptions> {
-    const format = FORMATS.includes(opts.format as OutputFormat)
-      ? (opts.format as OutputFormat)
-      : 'jpeg';
-
-    // Formats that support scaling
-    const scalableFormats: OutputFormat[] = ['png', 'jpeg', 'tiff'];
-
-    // If scale is explicitly null or format doesn't support scaling, don't use scale
-    let scale: number | null;
-    if (opts.scale === null || !scalableFormats.includes(format)) {
-      scale = null;
-    } else {
-      scale = opts.scale ?? 1024;
-    }
-
-    return {
-      format,
-      scale,
-      out_dir: outDir,
-      out_prefix: outPrefix,
-      page: opts.page ?? null,
-    };
-  }
-
-  /**
-   * Build pdftocairo arguments
-   */
-  private buildConvertArgs(
-    file: string,
-    opts: Required<ConvertOptions>
-  ): string[] {
-    const args: string[] = [`-${opts.format}`];
-
-    if (opts.page !== null) {
-      args.push('-f', String(parseInt(String(opts.page))));
-      args.push('-l', String(parseInt(String(opts.page))));
-    }
-    if (opts.scale !== null) {
-      args.push('-scale-to', String(parseInt(String(opts.scale))));
-    }
-    args.push(file);
-    args.push(path.join(opts.out_dir, opts.out_prefix));
-
-    return args;
-  }
-
-  /**
    * Prepare convert execution with xvfb handling
    */
   private prepareConvertExecution(args: string[]): {
@@ -745,25 +830,27 @@ export class PdfPoppler {
   }
 
   /**
-   * Fix CRLF line endings in a shell script
-   * Returns the path to use (original or fixed temp file)
+   * Check if script has CRLF line endings
    */
-  private fixScriptLineEndings(scriptPath: string): string {
+  private hasCRLF(scriptPath: string): boolean {
     try {
-      const scriptContent = fs.readFileSync(scriptPath, 'utf8');
-      if (scriptContent.includes('\r')) {
-        // Fix CRLF line endings (npm/git on Windows may convert them)
-        const fixedContent = scriptContent
-          .replace(/\r\n/g, '\n')
-          .replace(/\r/g, '\n');
-        const tempScript = '/tmp/xvfb-run-fixed';
-        fs.writeFileSync(tempScript, fixedContent, { mode: 0o755 });
-        return tempScript;
-      }
+      const content = fs.readFileSync(scriptPath, 'utf8');
+      return content.includes('\r');
     } catch {
-      // If we can't read/fix, return original
+      return false;
     }
-    return scriptPath;
+  }
+
+  /**
+   * Get script content with CRLF fixed (for passing to bash -c)
+   */
+  private getFixedScriptContent(scriptPath: string): string | null {
+    try {
+      const content = fs.readFileSync(scriptPath, 'utf8');
+      return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -777,6 +864,7 @@ export class PdfPoppler {
     command: string;
     args: string[];
     options: ExecFileOptions;
+    scriptContent?: string;
   } {
     const bundledXvfb = path.join(this.binaryPath, 'xvfb-run');
     const xvfbPaths = [bundledXvfb, '/opt/bin/xvfb-run', '/usr/bin/xvfb-run'];
@@ -788,30 +876,40 @@ export class PdfPoppler {
           env: { ...options.env, DISPLAY: ':99' },
         };
 
-        // Fix CRLF line endings if needed and get the script path to use
-        const scriptPath = this.fixScriptLineEndings(xvfbPath);
-        const wasFixed = scriptPath !== xvfbPath;
+        const needsCRLFFix = this.hasCRLF(xvfbPath);
 
-        // Use bash wrapper for bundled scripts or fixed scripts
-        if (wasFixed || xvfbPath === bundledXvfb) {
+        // If CRLF needs fixing, pass script content to bash -c (no temp file)
+        if (needsCRLFFix) {
+          const scriptContent = this.getFixedScriptContent(xvfbPath);
+          if (scriptContent) {
+            return {
+              command: '/bin/bash',
+              args: ['-c', `${scriptContent}\n"$@"`, '_', originalCommand, ...args],
+              options: newOptions,
+            };
+          }
+        }
+
+        // Use bash wrapper for bundled scripts
+        if (xvfbPath === bundledXvfb) {
           return {
             command: '/bin/bash',
-            args: [scriptPath, originalCommand, ...args],
-            options: newOptions,
-          };
-        } else {
-          // System xvfb-run can be executed directly
-          return {
-            command: xvfbPath,
-            args: [
-              '-a',
-              '--server-args=-screen 0 1024x768x24',
-              originalCommand,
-              ...args,
-            ],
+            args: [xvfbPath, originalCommand, ...args],
             options: newOptions,
           };
         }
+
+        // System xvfb-run can be executed directly
+        return {
+          command: xvfbPath,
+          args: [
+            '-a',
+            '--server-args=-screen 0 1024x768x24',
+            originalCommand,
+            ...args,
+          ],
+          options: newOptions,
+        };
       }
     }
 

@@ -2,11 +2,16 @@
  * Type definitions for pdf-poppler-core
  */
 
+import { Readable } from 'stream';
+
 /** Supported platforms */
 export type Platform = 'win32' | 'darwin' | 'linux';
 
 /** Supported output formats for PDF conversion */
 export type OutputFormat = 'png' | 'jpeg' | 'tiff' | 'pdf' | 'ps' | 'eps' | 'svg';
+
+/** Input source - Buffer, Uint8Array, or Readable stream */
+export type PdfInput = Buffer | Uint8Array | Readable;
 
 /**
  * Configuration options for PdfPoppler
@@ -51,20 +56,34 @@ export interface ExecOptions {
  * Options for PDF to image conversion
  */
 export interface ConvertOptions {
-  /** Output format (default: 'jpeg') */
+  /** Output format (default: 'png') */
   format?: OutputFormat;
 
-  /** Scale to this size in pixels (default: 1024) */
+  /** Scale to this size in pixels (default: 1024 for raster formats) */
   scale?: number | null;
-
-  /** Output directory (default: same as input file) */
-  out_dir?: string | null;
-
-  /** Output filename prefix (default: input filename without extension) */
-  out_prefix?: string | null;
 
   /** Convert only this page number (default: all pages) */
   page?: number | null;
+}
+
+/**
+ * Result of a single page conversion to buffer
+ */
+export interface PageResult {
+  /** Page number (1-indexed) */
+  page: number;
+  /** Image data as Buffer */
+  data: Buffer;
+}
+
+/**
+ * Result of a single page conversion to stream
+ */
+export interface PageStreamResult {
+  /** Page number (1-indexed) */
+  page: number;
+  /** Image data as Readable stream */
+  stream: Readable;
 }
 
 /**
