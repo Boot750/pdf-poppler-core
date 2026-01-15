@@ -43,9 +43,14 @@ export { PdfPopplerConfigBuilder, configure } from './PdfPopplerConfig';
 export {
   Platform,
   OutputFormat,
+  AntialiasMode,
   PdfPopplerConfig,
   ExecOptions,
   ConvertOptions,
+  TextOptions,
+  TextResult,
+  HtmlOptions,
+  FontInfo,
   PdfInfo,
   ImageData,
   VersionInfo,
@@ -53,7 +58,22 @@ export {
   PdfInput,
   PageResult,
   PageStreamResult,
+  SplitResult,
+  SplitStreamResult,
+  Attachment,
+  ExtractedAttachment,
+  SignatureDetails,
+  SignatureInfo,
 } from './types';
+
+// Error types
+export {
+  PdfPopplerError,
+  InvalidPdfError,
+  EncryptedPdfError,
+  PageOutOfRangeError,
+  BinaryNotFoundError,
+} from './errors';
 
 // Platform utilities (for advanced usage)
 export { BinaryResolver } from './platform/BinaryResolver';

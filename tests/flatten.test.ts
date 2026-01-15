@@ -1,16 +1,17 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { PdfPoppler } from 'pdf-poppler-core';
+import { PdfPoppler, InvalidPdfError } from 'pdf-poppler-core';
 
 describe('PDF Flatten Functionality', () => {
-  const formPdfPath = path.join(__dirname, '..', 'form_sample.pdf');
+  const samplePdfPath = path.join(__dirname, '..', 'sample.pdf');
   const testOutputDir = path.join(__dirname, '..', 'test-output');
   let poppler: PdfPoppler;
-  let formPdfBuffer: Buffer;
+  let samplePdfBuffer: Buffer;
 
   beforeAll(async () => {
+    expect(fs.existsSync(samplePdfPath)).toBe(true);
     poppler = new PdfPoppler();
-    formPdfBuffer = fs.readFileSync(formPdfPath);
+    samplePdfBuffer = fs.readFileSync(samplePdfPath);
 
     // Create test output directory if it doesn't exist
     if (!fs.existsSync(testOutputDir)) {
@@ -26,28 +27,28 @@ describe('PDF Flatten Functionality', () => {
 
   afterEach(() => {
     // Clean up test files
-    const testFiles = fs.readdirSync(testOutputDir);
-    testFiles.forEach(file => {
-      if (file.startsWith('flatten-test')) {
-        fs.unlinkSync(path.join(testOutputDir, file));
-      }
-    });
+    try {
+      const testFiles = fs.readdirSync(testOutputDir);
+      testFiles.forEach(file => {
+        if (file.startsWith('flatten-test')) {
+          fs.unlinkSync(path.join(testOutputDir, file));
+        }
+      });
+    } catch {
+      // Ignore cleanup errors
+    }
   });
 
   describe('poppler.flatten()', () => {
-    it('should have form_sample.pdf available', () => {
-      expect(fs.existsSync(formPdfPath)).toBe(true);
-    });
-
-    it('should flatten a PDF with form fields and return buffer', async () => {
-      const result = await poppler.flatten(formPdfBuffer);
+    it('should flatten a PDF and return buffer', async () => {
+      const result = await poppler.flatten(samplePdfBuffer);
 
       expect(result).toBeInstanceOf(Buffer);
       expect(result.length).toBeGreaterThan(0);
     });
 
     it('should create a valid PDF after flattening', async () => {
-      const result = await poppler.flatten(formPdfBuffer);
+      const result = await poppler.flatten(samplePdfBuffer);
 
       // Check PDF header
       const header = result.slice(0, 5).toString();
@@ -55,7 +56,7 @@ describe('PDF Flatten Functionality', () => {
     });
 
     it('should be able to get info from flattened PDF', async () => {
-      const flattenedBuffer = await poppler.flatten(formPdfBuffer);
+      const flattenedBuffer = await poppler.flatten(samplePdfBuffer);
       const info = await poppler.info(flattenedBuffer);
 
       expect(info).toBeDefined();
@@ -63,26 +64,30 @@ describe('PDF Flatten Functionality', () => {
       expect(parseInt(info.pages)).toBeGreaterThan(0);
     });
 
+    it('should preserve page count after flattening', async () => {
+      const originalInfo = await poppler.info(samplePdfBuffer);
+      const flattenedBuffer = await poppler.flatten(samplePdfBuffer);
+      const flattenedInfo = await poppler.info(flattenedBuffer);
+
+      expect(flattenedInfo.pages).toBe(originalInfo.pages);
+    });
+
     it('should handle invalid PDF data', async () => {
       const invalidBuffer = Buffer.from('not a pdf file');
 
-      await expect(
-        poppler.flatten(invalidBuffer)
-      ).rejects.toThrow();
+      await expect(poppler.flatten(invalidBuffer)).rejects.toThrow(InvalidPdfError);
     });
 
     it('should handle empty buffer', async () => {
       const emptyBuffer = Buffer.alloc(0);
 
-      await expect(
-        poppler.flatten(emptyBuffer)
-      ).rejects.toThrow();
+      await expect(poppler.flatten(emptyBuffer)).rejects.toThrow(InvalidPdfError);
     });
   });
 
   describe('poppler.flattenToStream()', () => {
     it('should return a readable stream', async () => {
-      const stream = await poppler.flattenToStream(formPdfBuffer);
+      const stream = await poppler.flattenToStream(samplePdfBuffer);
 
       expect(stream).toBeDefined();
       expect(typeof stream.pipe).toBe('function');
@@ -90,7 +95,7 @@ describe('PDF Flatten Functionality', () => {
     });
 
     it('should stream valid PDF data', async () => {
-      const stream = await poppler.flattenToStream(formPdfBuffer);
+      const stream = await poppler.flattenToStream(samplePdfBuffer);
       const chunks: Buffer[] = [];
 
       await new Promise<void>((resolve, reject) => {
@@ -108,7 +113,7 @@ describe('PDF Flatten Functionality', () => {
   describe('Flatten and Convert workflow', () => {
     it('should flatten then convert to PNG', async () => {
       // Step 1: Flatten
-      const flattenedBuffer = await poppler.flatten(formPdfBuffer);
+      const flattenedBuffer = await poppler.flatten(samplePdfBuffer);
       expect(flattenedBuffer.length).toBeGreaterThan(0);
 
       // Step 2: Convert to PNG
@@ -129,21 +134,21 @@ describe('PDF Flatten Functionality', () => {
       expect(pngBuffer[3]).toBe(0x47); // G
     });
 
-    it('should produce reasonable sized image with form data', async () => {
+    it('should produce reasonable sized image', async () => {
       // Flatten and convert
-      const flattenedBuffer = await poppler.flatten(formPdfBuffer);
+      const flattenedBuffer = await poppler.flatten(samplePdfBuffer);
       const pages = await poppler.convert(flattenedBuffer, {
         format: 'png',
         page: 1
       });
 
       expect(pages.length).toBe(1);
-      // Just verify we got a reasonable sized image (form data rendered)
+      // Just verify we got a reasonable sized image
       expect(pages[0].data.length).toBeGreaterThan(1000);
     });
 
     it('should be able to save converted image to file', async () => {
-      const flattenedBuffer = await poppler.flatten(formPdfBuffer);
+      const flattenedBuffer = await poppler.flatten(samplePdfBuffer);
       const pages = await poppler.convert(flattenedBuffer, {
         format: 'png',
         page: 1

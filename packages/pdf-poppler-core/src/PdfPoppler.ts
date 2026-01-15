@@ -6,6 +6,10 @@ import { Readable, PassThrough } from 'stream';
 import {
   PdfPopplerConfig,
   ConvertOptions,
+  TextOptions,
+  TextResult,
+  HtmlOptions,
+  FontInfo,
   PdfInfo,
   ImageData,
   VersionInfo,
@@ -15,10 +19,23 @@ import {
   PdfInput,
   PageResult,
   PageStreamResult,
+  SplitResult,
+  SplitStreamResult,
+  Attachment,
+  ExtractedAttachment,
+  SignatureInfo,
+  SignatureDetails,
 } from './types';
 import { PdfPopplerConfigBuilder, configure } from './PdfPopplerConfig';
 import { BinaryResolver } from './platform/BinaryResolver';
 import { EnvironmentDetector } from './platform/EnvironmentDetector';
+import {
+  PdfPopplerError,
+  InvalidPdfError,
+  EncryptedPdfError,
+  PageOutOfRangeError,
+  BinaryNotFoundError,
+} from './errors';
 
 /** Valid output formats */
 const FORMATS: OutputFormat[] = ['png', 'jpeg', 'tiff', 'pdf', 'ps', 'eps', 'svg'];
@@ -181,7 +198,7 @@ export class PdfPoppler {
 
       proc.on('close', (code: number) => {
         if (code !== 0) {
-          reject(new Error(`pdfinfo exited with code ${code}\nStderr: ${stderr}`));
+          reject(this.wrapError(new Error(`pdfinfo exited with code ${code}`), stderr));
         } else {
           resolve(this.parseInfo(stdout));
         }
@@ -206,18 +223,110 @@ export class PdfPoppler {
     const pageCount = parseInt(pdfInfo.pages, 10);
 
     // Determine which pages to convert
-    const startPage = options.page ?? 1;
-    const endPage = options.page ?? pageCount;
+    let pagesToConvert: number[] = [];
+
+    if (options.pages && options.pages.length > 0) {
+      // Use explicit pages array
+      pagesToConvert = options.pages.filter(p => p >= 1 && p <= pageCount);
+      // Validate all requested pages exist
+      for (const p of options.pages) {
+        if (p < 1 || p > pageCount) {
+          throw new PageOutOfRangeError(p, pageCount);
+        }
+      }
+      pagesToConvert = options.pages;
+    } else if (options.page !== undefined && options.page !== null) {
+      // Single page specified
+      if (options.page < 1 || options.page > pageCount) {
+        throw new PageOutOfRangeError(options.page, pageCount);
+      }
+      pagesToConvert = [options.page];
+    } else {
+      // Use firstPage/lastPage or default to all pages
+      const startPage = options.firstPage ?? 1;
+      const endPage = options.lastPage ?? pageCount;
+
+      // Validate range
+      if (startPage < 1 || startPage > pageCount) {
+        throw new PageOutOfRangeError(startPage, pageCount);
+      }
+      if (endPage < 1 || endPage > pageCount) {
+        throw new PageOutOfRangeError(endPage, pageCount);
+      }
+
+      for (let page = startPage; page <= endPage; page++) {
+        pagesToConvert.push(page);
+      }
+    }
 
     const results: PageResult[] = [];
 
     // Process each page (pdftocairo stdout only supports single page)
-    for (let page = startPage; page <= endPage; page++) {
+    for (const page of pagesToConvert) {
       const pageBuffer = await this.convertSinglePageToBuffer(pdfBuffer, page, options);
       results.push({ page, data: pageBuffer });
     }
 
     return results;
+  }
+
+  /**
+   * Convert PDF pages using an async iterator (memory efficient for large PDFs)
+   * Yields pages one at a time instead of loading all into memory
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @param options - Conversion options
+   * @yields { page, data: Buffer } for each page
+   */
+  async *convertIterator(
+    input: PdfInput,
+    options: ConvertOptions = {}
+  ): AsyncGenerator<PageResult, void, unknown> {
+    const pdfBuffer = await this.inputToBuffer(input);
+
+    // Get page count
+    const pdfInfo = await this.info(pdfBuffer);
+    const pageCount = parseInt(pdfInfo.pages, 10);
+
+    // Determine which pages to convert
+    let pagesToConvert: number[] = [];
+
+    if (options.pages && options.pages.length > 0) {
+      // Use explicit pages array
+      for (const p of options.pages) {
+        if (p < 1 || p > pageCount) {
+          throw new PageOutOfRangeError(p, pageCount);
+        }
+      }
+      pagesToConvert = options.pages;
+    } else if (options.page !== undefined && options.page !== null) {
+      // Single page specified
+      if (options.page < 1 || options.page > pageCount) {
+        throw new PageOutOfRangeError(options.page, pageCount);
+      }
+      pagesToConvert = [options.page];
+    } else {
+      // Use firstPage/lastPage or default to all pages
+      const startPage = options.firstPage ?? 1;
+      const endPage = options.lastPage ?? pageCount;
+
+      // Validate range
+      if (startPage < 1 || startPage > pageCount) {
+        throw new PageOutOfRangeError(startPage, pageCount);
+      }
+      if (endPage < 1 || endPage > pageCount) {
+        throw new PageOutOfRangeError(endPage, pageCount);
+      }
+
+      for (let page = startPage; page <= endPage; page++) {
+        pagesToConvert.push(page);
+      }
+    }
+
+    // Yield each page one at a time
+    for (const page of pagesToConvert) {
+      const pageBuffer = await this.convertSinglePageToBuffer(pdfBuffer, page, options);
+      yield { page, data: pageBuffer };
+    }
   }
 
   /**
@@ -283,7 +392,7 @@ export class PdfPoppler {
 
       proc.on('close', (code: number) => {
         if (code !== 0) {
-          reject(new Error(`pdftocairo exited with code ${code}\nStderr: ${stderr}`));
+          reject(this.wrapError(new Error(`pdftocairo exited with code ${code}`), stderr));
         } else {
           resolve(Buffer.concat(chunks));
         }
@@ -331,47 +440,11 @@ export class PdfPoppler {
    * Get embedded image metadata from PDF
    * @param input - PDF as Buffer, Uint8Array, or Readable stream
    */
-  async imgdata(input: PdfInput): Promise<ImageData[]> {
+  async listImages(input: PdfInput): Promise<ImageData[]> {
     const pdfBuffer = await this.inputToBuffer(input);
     const binary = path.join(this.binaryPath, this.getBinaryName('pdfimages'));
 
-    // On Linux, use /dev/stdin to avoid temp files
-    if (this.resolvedConfig.platform === 'linux') {
-      return new Promise((resolve, reject) => {
-        const proc = spawn(binary, ['/dev/stdin', '-list'], {
-          ...this.execOptions,
-          stdio: ['pipe', 'pipe', 'pipe'],
-        });
-
-        let stdout = '';
-        let stderr = '';
-
-        proc.stdout.on('data', (data: Buffer) => {
-          stdout += data.toString();
-        });
-
-        proc.stderr.on('data', (data: Buffer) => {
-          stderr += data.toString();
-        });
-
-        proc.on('error', (error: Error) => {
-          reject(this.wrapError(error, stderr));
-        });
-
-        proc.on('close', (code: number) => {
-          if (code !== 0) {
-            reject(new Error(`pdfimages exited with code ${code}\nStderr: ${stderr}`));
-          } else {
-            resolve(this.parseImgdata(stdout));
-          }
-        });
-
-        proc.stdin.write(pdfBuffer);
-        proc.stdin.end();
-      });
-    }
-
-    // On Windows, we must use a temp file (no /dev/stdin)
+    // pdfimages requires a file path, doesn't reliably support stdin
     const tempDir = os.tmpdir();
     const tempFile = path.join(
       tempDir,
@@ -402,6 +475,780 @@ export class PdfPoppler {
         // Ignore cleanup errors
       }
     }
+  }
+
+  /**
+   * Get embedded image metadata from PDF
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @deprecated Use listImages() instead
+   */
+  async imgdata(input: PdfInput): Promise<ImageData[]> {
+    return this.listImages(input);
+  }
+
+  /**
+   * Extract text from PDF
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @param options - Text extraction options
+   * @returns All text content as a single string
+   */
+  async text(input: PdfInput, options: TextOptions = {}): Promise<string> {
+    const pdfBuffer = await this.inputToBuffer(input);
+    const binary = path.join(this.binaryPath, this.getBinaryName('pdftotext'));
+
+    const args = this.buildTextArgs(options);
+    args.push('-'); // stdin input
+    args.push('-'); // stdout output
+
+    return new Promise((resolve, reject) => {
+      const proc = spawn(binary, args, {
+        ...this.execOptions,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout.on('data', (data: Buffer) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      proc.on('error', (error: Error) => {
+        reject(this.wrapError(error, stderr));
+      });
+
+      proc.on('close', (code: number) => {
+        if (code !== 0) {
+          reject(this.wrapError(new Error(`pdftotext exited with code ${code}`), stderr));
+        } else {
+          resolve(stdout);
+        }
+      });
+
+      proc.stdin.write(pdfBuffer);
+      proc.stdin.end();
+    });
+  }
+
+  /**
+   * Extract text from PDF page by page
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @param options - Text extraction options
+   * @returns Array of { page, text } for each page
+   */
+  async textPages(input: PdfInput, options: TextOptions = {}): Promise<TextResult[]> {
+    const pdfBuffer = await this.inputToBuffer(input);
+
+    // Get page count
+    const pdfInfo = await this.info(pdfBuffer);
+    const pageCount = parseInt(pdfInfo.pages, 10);
+
+    // Determine which pages to extract
+    let startPage = 1;
+    let endPage = pageCount;
+
+    if (options.page !== undefined) {
+      startPage = options.page;
+      endPage = options.page;
+    } else {
+      if (options.firstPage !== undefined) {
+        startPage = options.firstPage;
+      }
+      if (options.lastPage !== undefined) {
+        endPage = options.lastPage;
+      }
+    }
+
+    const results: TextResult[] = [];
+
+    // Extract text from each page
+    for (let page = startPage; page <= endPage; page++) {
+      const pageText = await this.text(pdfBuffer, {
+        ...options,
+        firstPage: page,
+        lastPage: page,
+      });
+      results.push({ page, text: pageText });
+    }
+
+    return results;
+  }
+
+  /**
+   * List fonts used in PDF
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @param options - Options including password for encrypted PDFs
+   * @returns Array of FontInfo objects
+   */
+  async listFonts(
+    input: PdfInput,
+    options: { password?: string } = {}
+  ): Promise<FontInfo[]> {
+    const pdfBuffer = await this.inputToBuffer(input);
+    const binary = path.join(this.binaryPath, this.getBinaryName('pdffonts'));
+
+    const args: string[] = [];
+
+    // Password
+    if (options.password) {
+      args.push('-upw', options.password);
+    }
+
+    args.push('-'); // stdin input
+
+    return new Promise((resolve, reject) => {
+      const proc = spawn(binary, args, {
+        ...this.execOptions,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout.on('data', (data: Buffer) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      proc.on('error', (error: Error) => {
+        reject(this.wrapError(error, stderr));
+      });
+
+      proc.on('close', (code: number) => {
+        if (code !== 0) {
+          reject(this.wrapError(new Error(`pdffonts exited with code ${code}`), stderr));
+        } else {
+          resolve(this.parseFonts(stdout));
+        }
+      });
+
+      proc.stdin.write(pdfBuffer);
+      proc.stdin.end();
+    });
+  }
+
+  /**
+   * Merge multiple PDFs into one
+   * @param inputs - Array of PDF inputs (Buffer, Uint8Array, or Readable stream)
+   * @returns Merged PDF as Buffer
+   */
+  async merge(inputs: PdfInput[]): Promise<Buffer> {
+    if (!inputs || !Array.isArray(inputs) || inputs.length === 0) {
+      throw new PdfPopplerError('At least one PDF input is required');
+    }
+
+    const binary = path.join(this.binaryPath, this.getBinaryName('pdfunite'));
+    const tempDir = os.tmpdir();
+    const tempFiles: string[] = [];
+    const outputFile = path.join(
+      tempDir,
+      `pdf-poppler-merged-${Date.now()}-${Math.random().toString(36).substring(2, 11)}.pdf`
+    );
+
+    try {
+      // Convert all inputs to buffers and write to temp files
+      for (let i = 0; i < inputs.length; i++) {
+        const pdfBuffer = await this.inputToBuffer(inputs[i]);
+        const tempFile = path.join(
+          tempDir,
+          `pdf-poppler-input-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 11)}.pdf`
+        );
+        fs.writeFileSync(tempFile, pdfBuffer);
+        tempFiles.push(tempFile);
+      }
+
+      // Build pdfunite command: pdfunite input1.pdf input2.pdf ... output.pdf
+      const args = [...tempFiles, outputFile];
+
+      return await new Promise((resolve, reject) => {
+        execFile(binary, args, this.execOptions, (error, stdout, stderr) => {
+          if (error) {
+            return reject(this.wrapError(error, stderr as string));
+          }
+
+          try {
+            const mergedPdf = fs.readFileSync(outputFile);
+            resolve(mergedPdf);
+          } catch (readError) {
+            reject(this.wrapError(readError as Error, stderr as string));
+          }
+        });
+      });
+    } finally {
+      // Clean up all temp files
+      for (const tempFile of tempFiles) {
+        try {
+          fs.unlinkSync(tempFile);
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+      try {
+        fs.unlinkSync(outputFile);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  }
+
+  /**
+   * Merge multiple PDFs into one and return as stream
+   * @param inputs - Array of PDF inputs (Buffer, Uint8Array, or Readable stream)
+   * @returns Merged PDF as Readable stream
+   */
+  async mergeToStream(inputs: PdfInput[]): Promise<Readable> {
+    const buffer = await this.merge(inputs);
+    return Readable.from(buffer);
+  }
+
+  /**
+   * Split PDF into individual single-page PDFs
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @returns Array of { page, data: Buffer } for each page
+   */
+  async split(input: PdfInput): Promise<SplitResult[]> {
+    const pdfBuffer = await this.inputToBuffer(input);
+
+    // Get page count
+    const pdfInfo = await this.info(pdfBuffer);
+    const pageCount = parseInt(pdfInfo.pages, 10);
+
+    const results: SplitResult[] = [];
+
+    // Use pdftocairo to extract each page as a separate PDF
+    // pdftocairo -pdf -f <page> -l <page> supports stdin/stdout
+    for (let page = 1; page <= pageCount; page++) {
+      const pageBuffer = await this.extractSinglePage(pdfBuffer, page);
+      results.push({ page, data: pageBuffer });
+    }
+
+    return results;
+  }
+
+  /**
+   * Split PDF into individual single-page PDF streams
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @returns Array of { page, stream: Readable } for each page
+   */
+  async splitToStreams(input: PdfInput): Promise<SplitStreamResult[]> {
+    const pdfBuffer = await this.inputToBuffer(input);
+
+    // Get page count
+    const pdfInfo = await this.info(pdfBuffer);
+    const pageCount = parseInt(pdfInfo.pages, 10);
+
+    const results: SplitStreamResult[] = [];
+
+    for (let page = 1; page <= pageCount; page++) {
+      const stream = this.extractSinglePageToStream(pdfBuffer, page);
+      results.push({ page, stream });
+    }
+
+    return results;
+  }
+
+  /**
+   * Extract a single page from PDF as Buffer
+   */
+  private async extractSinglePage(pdfBuffer: Buffer, page: number): Promise<Buffer> {
+    const binary = path.join(this.binaryPath, this.getBinaryName('pdftocairo'));
+    const args = ['-pdf', '-f', String(page), '-l', String(page), '-', '-'];
+
+    return new Promise((resolve, reject) => {
+      const proc = spawn(binary, args, {
+        ...this.execOptions,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      const chunks: Buffer[] = [];
+      let stderr = '';
+
+      proc.stdout.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+
+      proc.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      proc.on('error', (error: Error) => {
+        reject(this.wrapError(error, stderr));
+      });
+
+      proc.on('close', (code: number) => {
+        if (code !== 0) {
+          reject(this.wrapError(new Error(`pdftocairo exited with code ${code}`), stderr));
+        } else {
+          resolve(Buffer.concat(chunks));
+        }
+      });
+
+      proc.stdin.write(pdfBuffer);
+      proc.stdin.end();
+    });
+  }
+
+  /**
+   * Extract a single page from PDF as Readable stream
+   */
+  private extractSinglePageToStream(pdfBuffer: Buffer, page: number): Readable {
+    const binary = path.join(this.binaryPath, this.getBinaryName('pdftocairo'));
+    const args = ['-pdf', '-f', String(page), '-l', String(page), '-', '-'];
+    const passThrough = new PassThrough();
+
+    const proc = spawn(binary, args, {
+      ...this.execOptions,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    proc.stdout.pipe(passThrough);
+
+    proc.stderr.on('data', () => {
+      // Could emit as warning or store for debugging
+    });
+
+    proc.on('error', (err: Error) => {
+      passThrough.destroy(err);
+    });
+
+    proc.stdin.write(pdfBuffer);
+    proc.stdin.end();
+
+    return passThrough;
+  }
+
+  /**
+   * List attachments in PDF
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @returns Array of Attachment objects
+   */
+  async listAttachments(input: PdfInput): Promise<Attachment[]> {
+    const pdfBuffer = await this.inputToBuffer(input);
+    const binary = path.join(this.binaryPath, this.getBinaryName('pdfdetach'));
+    const tempDir = os.tmpdir();
+    const tempFile = path.join(
+      tempDir,
+      `pdf-poppler-detach-${Date.now()}-${Math.random().toString(36).substring(2, 11)}.pdf`
+    );
+
+    try {
+      fs.writeFileSync(tempFile, pdfBuffer);
+
+      return await new Promise((resolve, reject) => {
+        execFile(binary, ['-list', tempFile], this.execOptions, (error, stdout, stderr) => {
+          if (error) {
+            return reject(this.wrapError(error, stderr as string));
+          }
+          resolve(this.parseAttachments(stdout as string));
+        });
+      });
+    } finally {
+      try {
+        fs.unlinkSync(tempFile);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  }
+
+  /**
+   * Extract a specific attachment by index
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @param index - Attachment index (1-indexed)
+   * @returns Attachment data as Buffer
+   */
+  async extractAttachment(input: PdfInput, index: number): Promise<Buffer> {
+    const pdfBuffer = await this.inputToBuffer(input);
+    const binary = path.join(this.binaryPath, this.getBinaryName('pdfdetach'));
+    const tempDir = os.tmpdir();
+    const tempFile = path.join(
+      tempDir,
+      `pdf-poppler-detach-${Date.now()}-${Math.random().toString(36).substring(2, 11)}.pdf`
+    );
+    const outputDir = path.join(
+      tempDir,
+      `pdf-poppler-attach-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
+    );
+
+    try {
+      fs.writeFileSync(tempFile, pdfBuffer);
+      fs.mkdirSync(outputDir, { recursive: true });
+
+      // First get the filename of the attachment
+      const attachments = await this.listAttachments(pdfBuffer);
+      const attachment = attachments.find(a => a.index === index);
+      if (!attachment) {
+        throw new PdfPopplerError(`Attachment ${index} not found`);
+      }
+
+      return await new Promise((resolve, reject) => {
+        const outputPath = path.join(outputDir, attachment.name);
+        execFile(
+          binary,
+          ['-savefile', String(index), '-o', outputPath, tempFile],
+          this.execOptions,
+          (error, stdout, stderr) => {
+            if (error) {
+              return reject(this.wrapError(error, stderr as string));
+            }
+            try {
+              const data = fs.readFileSync(outputPath);
+              resolve(data);
+            } catch (readError) {
+              reject(this.wrapError(readError as Error, stderr as string));
+            }
+          }
+        );
+      });
+    } finally {
+      try {
+        fs.unlinkSync(tempFile);
+      } catch {
+        // Ignore cleanup errors
+      }
+      try {
+        fs.rmSync(outputDir, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  }
+
+  /**
+   * Extract all attachments from PDF
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @returns Array of { name, data } for each attachment
+   */
+  async extractAllAttachments(input: PdfInput): Promise<ExtractedAttachment[]> {
+    const pdfBuffer = await this.inputToBuffer(input);
+
+    // First list attachments
+    const attachments = await this.listAttachments(pdfBuffer);
+
+    if (attachments.length === 0) {
+      return [];
+    }
+
+    const results: ExtractedAttachment[] = [];
+
+    // Extract each attachment
+    for (const attachment of attachments) {
+      const data = await this.extractAttachment(pdfBuffer, attachment.index);
+      results.push({ name: attachment.name, data });
+    }
+
+    return results;
+  }
+
+  /**
+   * Convert PDF to HTML
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @param options - HTML conversion options
+   * @returns HTML content as string
+   * @throws BinaryNotFoundError if pdftohtml is not available
+   */
+  async html(input: PdfInput, options: HtmlOptions = {}): Promise<string> {
+    const pdfBuffer = await this.inputToBuffer(input);
+    const binary = path.join(this.binaryPath, this.getBinaryName('pdftohtml'));
+
+    // Check if pdftohtml binary exists
+    if (!fs.existsSync(binary)) {
+      throw new BinaryNotFoundError('pdftohtml');
+    }
+
+    const tempDir = os.tmpdir();
+    const tempFile = path.join(
+      tempDir,
+      `pdf-poppler-html-${Date.now()}-${Math.random().toString(36).substring(2, 11)}.pdf`
+    );
+
+    try {
+      fs.writeFileSync(tempFile, pdfBuffer);
+
+      const args = this.buildHtmlArgs(options);
+      args.push('-stdout'); // Output to stdout
+      args.push(tempFile); // Input file
+
+      return await new Promise((resolve, reject) => {
+        execFile(binary, args, this.execOptions, (error, stdout, stderr) => {
+          if (error) {
+            return reject(this.wrapError(error, stderr as string));
+          }
+          resolve(stdout as string);
+        });
+      });
+    } finally {
+      try {
+        fs.unlinkSync(tempFile);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  }
+
+  /**
+   * Build pdftohtml command arguments from options
+   */
+  private buildHtmlArgs(options: HtmlOptions): string[] {
+    const args: string[] = [];
+
+    // Page range
+    if (options.page !== undefined) {
+      args.push('-f', String(options.page));
+      args.push('-l', String(options.page));
+    } else {
+      if (options.firstPage !== undefined) {
+        args.push('-f', String(options.firstPage));
+      }
+      if (options.lastPage !== undefined) {
+        args.push('-l', String(options.lastPage));
+      }
+    }
+
+    // Password
+    if (options.password) {
+      args.push('-upw', options.password);
+    }
+
+    // No frames
+    if (options.noFrames) {
+      args.push('-noframes');
+    }
+
+    // Complex HTML
+    if (options.complex) {
+      args.push('-c');
+    }
+
+    // Single page
+    if (options.singlePage) {
+      args.push('-s');
+    }
+
+    // Ignore images
+    if (options.ignoreImages) {
+      args.push('-i');
+    }
+
+    // Zoom
+    if (options.zoom !== undefined) {
+      args.push('-zoom', String(options.zoom));
+    }
+
+    return args;
+  }
+
+  /**
+   * Verify digital signatures in PDF
+   * @param input - PDF as Buffer, Uint8Array, or Readable stream
+   * @returns SignatureInfo with signed status and signature details
+   * @throws BinaryNotFoundError if pdfsig is not available
+   */
+  async verifySignatures(input: PdfInput): Promise<SignatureInfo> {
+    const pdfBuffer = await this.inputToBuffer(input);
+    const binary = path.join(this.binaryPath, this.getBinaryName('pdfsig'));
+
+    // Check if pdfsig binary exists
+    if (!fs.existsSync(binary)) {
+      throw new BinaryNotFoundError('pdfsig');
+    }
+
+    // pdfsig supports stdin with '-'
+    return new Promise((resolve, reject) => {
+      const proc = spawn(binary, ['-'], {
+        ...this.execOptions,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout.on('data', (data: Buffer) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      proc.on('error', (error: Error) => {
+        reject(this.wrapError(error, stderr));
+      });
+
+      proc.on('close', (code: number) => {
+        if (code !== 0) {
+          reject(this.wrapError(new Error(`pdfsig exited with code ${code}`), stderr));
+        } else {
+          resolve(this.parseSignatures(stdout));
+        }
+      });
+
+      proc.stdin.write(pdfBuffer);
+      proc.stdin.end();
+    });
+  }
+
+  /**
+   * Parse pdfsig output
+   */
+  private parseSignatures(stdout: string): SignatureInfo {
+    const lines = stdout.trim().split(/\r?\n/);
+    const signatures: SignatureDetails[] = [];
+
+    // Check if document is signed
+    const hasNoSignatures = lines.some(line =>
+      line.toLowerCase().includes('does not contain any signatures') ||
+      line.toLowerCase().includes('no signatures')
+    );
+
+    if (hasNoSignatures) {
+      return { signed: false, signatures: [] };
+    }
+
+    // Parse signature information
+    // pdfsig output format varies, but typically includes:
+    // - Signature #N
+    // - Signer name, certificate info, time, etc.
+    let currentSig: Partial<SignatureDetails> | null = null;
+
+    for (const line of lines) {
+      const lowerLine = line.toLowerCase();
+
+      // New signature block
+      if (lowerLine.includes('signature #') || lowerLine.match(/^signature \d+/)) {
+        if (currentSig) {
+          signatures.push({
+            valid: currentSig.valid ?? false,
+            trusted: currentSig.trusted ?? false,
+            ...currentSig,
+          });
+        }
+        currentSig = { valid: false, trusted: false };
+      }
+
+      if (currentSig) {
+        // Parse signature details
+        if (lowerLine.includes('signer') && line.includes(':')) {
+          currentSig.signerName = line.split(':').slice(1).join(':').trim();
+        }
+        if (lowerLine.includes('certificate') && line.includes(':')) {
+          currentSig.signerCertificate = line.split(':').slice(1).join(':').trim();
+        }
+        if (lowerLine.includes('time') && line.includes(':')) {
+          currentSig.signTime = line.split(':').slice(1).join(':').trim();
+        }
+        if (lowerLine.includes('hash algorithm') && line.includes(':')) {
+          currentSig.hashAlgorithm = line.split(':').slice(1).join(':').trim();
+        }
+        if (lowerLine.includes('signature is valid')) {
+          currentSig.valid = true;
+        }
+        if (lowerLine.includes('certificate is trusted')) {
+          currentSig.trusted = true;
+        }
+      }
+    }
+
+    // Add last signature if exists
+    if (currentSig) {
+      signatures.push({
+        valid: currentSig.valid ?? false,
+        trusted: currentSig.trusted ?? false,
+        ...currentSig,
+      });
+    }
+
+    return {
+      signed: signatures.length > 0,
+      signatures,
+    };
+  }
+
+  /**
+   * Parse pdfdetach -list output
+   * Output format:
+   * 1 File attachments
+   * 1: name.txt
+   * 2: file.pdf
+   */
+  private parseAttachments(stdout: string): Attachment[] {
+    const lines = stdout.trim().split(/\r?\n/);
+    const attachments: Attachment[] = [];
+
+    // Skip header line(s)
+    for (const line of lines) {
+      // Match lines like "1: filename.txt" or "  1: filename.txt"
+      const match = line.match(/^\s*(\d+):\s+(.+)$/);
+      if (match) {
+        attachments.push({
+          index: parseInt(match[1], 10),
+          name: match[2].trim(),
+          size: 0, // pdfdetach -list doesn't show size
+        });
+      }
+    }
+
+    return attachments;
+  }
+
+  /**
+   * Build pdftotext command arguments from options
+   */
+  private buildTextArgs(options: TextOptions): string[] {
+    const args: string[] = [];
+
+    // Page range
+    if (options.page !== undefined) {
+      args.push('-f', String(options.page));
+      args.push('-l', String(options.page));
+    } else {
+      if (options.firstPage !== undefined) {
+        args.push('-f', String(options.firstPage));
+      }
+      if (options.lastPage !== undefined) {
+        args.push('-l', String(options.lastPage));
+      }
+    }
+
+    // Layout options
+    if (options.layout) {
+      args.push('-layout');
+    }
+    if (options.raw) {
+      args.push('-raw');
+    }
+
+    // Password
+    if (options.password) {
+      args.push('-upw', options.password);
+    }
+
+    // Encoding
+    if (options.encoding) {
+      args.push('-enc', options.encoding);
+    }
+
+    // End of line
+    if (options.eol) {
+      args.push('-eol', options.eol);
+    }
+
+    // Other options
+    if (options.noDiag) {
+      args.push('-nodiag');
+    }
+    if (options.noPageBreaks) {
+      args.push('-nopgbrk');
+    }
+
+    return args;
   }
 
   // ===================
@@ -614,11 +1461,21 @@ export class PdfPoppler {
    * Convert any input type to Buffer
    */
   private async inputToBuffer(input: PdfInput): Promise<Buffer> {
+    // Validate input
+    if (input === null || input === undefined) {
+      throw new InvalidPdfError('Input cannot be null or undefined');
+    }
+
     if (Buffer.isBuffer(input)) {
       return input;
     }
     if (input instanceof Uint8Array) {
       return Buffer.from(input);
+    }
+
+    // Check if it's a readable stream (has .on method)
+    if (typeof (input as Readable).on !== 'function') {
+      throw new InvalidPdfError('Input must be a Buffer, Uint8Array, or Readable stream');
     }
 
     // Readable stream - collect chunks
@@ -648,13 +1505,45 @@ export class PdfPoppler {
     args.push('-f', String(page));
     args.push('-l', String(page));
 
-    // Formats that support scaling
+    // Formats that support scaling/resolution
     const scalableFormats: OutputFormat[] = ['png', 'jpeg', 'tiff'];
-    if (options.scale !== null && options.scale !== undefined && scalableFormats.includes(format)) {
+
+    // DPI takes precedence over scale
+    if (options.dpi !== undefined && scalableFormats.includes(format)) {
+      args.push('-r', String(options.dpi));
+    } else if (options.scale !== null && options.scale !== undefined && scalableFormats.includes(format)) {
       args.push('-scale-to', String(parseInt(String(options.scale))));
-    } else if (options.scale === undefined && scalableFormats.includes(format)) {
+    } else if (options.scale === undefined && options.dpi === undefined && scalableFormats.includes(format)) {
       // Default scale for raster formats
       args.push('-scale-to', '1024');
+    }
+
+    // JPEG quality
+    if (format === 'jpeg' && options.quality !== undefined) {
+      args.push('-jpegopt', `quality=${options.quality}`);
+    }
+
+    // Password options
+    if (options.password) {
+      args.push('-upw', options.password);
+    }
+    if (options.ownerPassword) {
+      args.push('-opw', options.ownerPassword);
+    }
+
+    // Transparency (PNG only)
+    if (options.transparent && format === 'png') {
+      args.push('-transp');
+    }
+
+    // Antialias
+    if (options.antialias) {
+      args.push('-antialias', options.antialias);
+    }
+
+    // Crop box
+    if (options.cropBox) {
+      args.push('-cropbox');
     }
 
     args.push('-'); // stdin input
@@ -685,7 +1574,7 @@ export class PdfPoppler {
 
       proc.on('close', (code: number) => {
         if (code !== 0) {
-          reject(new Error(`pdftocairo exited with code ${code}\nStderr: ${stderr}`));
+          reject(this.wrapError(new Error(`pdftocairo exited with code ${code}`), stderr));
         } else {
           resolve(Buffer.concat(chunks));
         }
@@ -714,13 +1603,45 @@ export class PdfPoppler {
     args.push('-f', String(page));
     args.push('-l', String(page));
 
-    // Formats that support scaling
+    // Formats that support scaling/resolution
     const scalableFormats: OutputFormat[] = ['png', 'jpeg', 'tiff'];
-    if (options.scale !== null && options.scale !== undefined && scalableFormats.includes(format)) {
+
+    // DPI takes precedence over scale
+    if (options.dpi !== undefined && scalableFormats.includes(format)) {
+      args.push('-r', String(options.dpi));
+    } else if (options.scale !== null && options.scale !== undefined && scalableFormats.includes(format)) {
       args.push('-scale-to', String(parseInt(String(options.scale))));
-    } else if (options.scale === undefined && scalableFormats.includes(format)) {
+    } else if (options.scale === undefined && options.dpi === undefined && scalableFormats.includes(format)) {
       // Default scale for raster formats
       args.push('-scale-to', '1024');
+    }
+
+    // JPEG quality
+    if (format === 'jpeg' && options.quality !== undefined) {
+      args.push('-jpegopt', `quality=${options.quality}`);
+    }
+
+    // Password options
+    if (options.password) {
+      args.push('-upw', options.password);
+    }
+    if (options.ownerPassword) {
+      args.push('-opw', options.ownerPassword);
+    }
+
+    // Transparency (PNG only)
+    if (options.transparent && format === 'png') {
+      args.push('-transp');
+    }
+
+    // Antialias
+    if (options.antialias) {
+      args.push('-antialias', options.antialias);
+    }
+
+    // Crop box
+    if (options.cropBox) {
+      args.push('-cropbox');
     }
 
     args.push('-'); // stdin input
@@ -795,6 +1716,67 @@ export class PdfPoppler {
     }
 
     return data;
+  }
+
+  /**
+   * Parse pdffonts output
+   * pdffonts output format:
+   * name                                 type              encoding         emb sub uni object ID
+   * ------------------------------------ ----------------- ---------------- --- --- --- ---------
+   * ABCDEE+Arial-BoldMT                  CID TrueType      Identity-H       yes yes yes     10  0
+   */
+  private parseFonts(stdout: string): FontInfo[] {
+    const lines = stdout.trim().split(/\r?\n/);
+    if (lines.length < 2) return [];
+
+    // Parse separator line to find column positions
+    const separatorLine = lines[1];
+
+    // Use separator line dashes to find column boundaries
+    // Each column is separated by a space between dash groups
+    const columnBoundaries: { start: number; end: number }[] = [];
+    let inDash = false;
+    let colStart = 0;
+
+    for (let i = 0; i <= separatorLine.length; i++) {
+      const char = separatorLine[i];
+      if (char === '-' && !inDash) {
+        colStart = i;
+        inDash = true;
+      } else if ((char !== '-' || i === separatorLine.length) && inDash) {
+        columnBoundaries.push({ start: colStart, end: i });
+        inDash = false;
+      }
+    }
+
+    if (columnBoundaries.length < 6) return [];
+
+    const fonts: FontInfo[] = [];
+
+    // Parse each font line (skip header and separator)
+    for (let i = 2; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+
+      // Extract values using column boundaries
+      const name = line.substring(columnBoundaries[0].start, columnBoundaries[0].end).trim();
+      const type = line.substring(columnBoundaries[1].start, columnBoundaries[1].end).trim();
+      const encoding = line.substring(columnBoundaries[2].start, columnBoundaries[2].end).trim();
+      const emb = line.substring(columnBoundaries[3].start, columnBoundaries[3].end).trim().toLowerCase();
+      const sub = line.substring(columnBoundaries[4].start, columnBoundaries[4].end).trim().toLowerCase();
+      const uni = line.substring(columnBoundaries[5].start, columnBoundaries[5].end).trim().toLowerCase();
+
+      fonts.push({
+        name,
+        type,
+        encoding,
+        embedded: emb === 'yes',
+        subset: sub === 'yes',
+        unicode: uni === 'yes',
+      });
+    }
+
+    return fonts;
   }
 
   /**
@@ -925,14 +1907,40 @@ export class PdfPoppler {
   }
 
   /**
-   * Wrap error with stderr information
+   * Wrap error with stderr information and detect error type
    */
-  private wrapError(error: Error, stderr?: string): Error {
+  private wrapError(error: Error, stderr?: string): PdfPopplerError {
+    const stderrLower = (stderr || '').toLowerCase();
+    const messageLower = error.message.toLowerCase();
+    const combined = stderrLower + ' ' + messageLower;
+
+    // Detect encrypted/password-protected PDF
+    if (
+      combined.includes('encrypted') ||
+      combined.includes('password') ||
+      combined.includes('permission denied')
+    ) {
+      return new EncryptedPdfError('PDF is password protected', stderr);
+    }
+
+    // Detect invalid PDF
+    if (
+      combined.includes('not a pdf') ||
+      combined.includes('invalid pdf') ||
+      combined.includes('corrupted') ||
+      combined.includes('couldn\'t open') ||
+      combined.includes('error opening') ||
+      combined.includes('syntax error') ||
+      combined.includes('command line error') ||
+      combined.includes('pdf file is damaged')
+    ) {
+      return new InvalidPdfError('Invalid or corrupted PDF file', stderr);
+    }
+
+    // Default to base error
     const message = stderr
       ? `${error.message}\nStderr: ${stderr}`
       : error.message;
-    const wrapped = new Error(message);
-    wrapped.stack = error.stack;
-    return wrapped;
+    return new PdfPopplerError(message, stderr);
   }
 }

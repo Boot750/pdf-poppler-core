@@ -239,4 +239,38 @@ describe('PDF Image Data Functionality', () => {
       }
     });
   });
+
+  describe('listImages() - renamed from imgdata()', () => {
+    it('should extract image metadata using listImages()', async () => {
+      const images = await poppler.listImages(samplePdfBuffer);
+      expect(Array.isArray(images)).toBe(true);
+    });
+
+    it('should maintain backward compatibility with imgdata()', async () => {
+      const imagesFromImgdata = await poppler.imgdata(samplePdfBuffer);
+      const imagesFromListImages = await poppler.listImages(samplePdfBuffer);
+
+      expect(imagesFromImgdata.length).toBe(imagesFromListImages.length);
+
+      if (imagesFromImgdata.length > 0) {
+        expect(imagesFromImgdata[0]).toEqual(imagesFromListImages[0]);
+      }
+    });
+
+    it('should work with all input types using listImages()', async () => {
+      // Buffer
+      const fromBuffer = await poppler.listImages(samplePdfBuffer);
+      expect(Array.isArray(fromBuffer)).toBe(true);
+
+      // Uint8Array
+      const uint8Array = new Uint8Array(samplePdfBuffer);
+      const fromUint8 = await poppler.listImages(uint8Array);
+      expect(Array.isArray(fromUint8)).toBe(true);
+
+      // Readable stream
+      const stream = Readable.from(samplePdfBuffer);
+      const fromStream = await poppler.listImages(stream);
+      expect(Array.isArray(fromStream)).toBe(true);
+    });
+  });
 });

@@ -52,6 +52,9 @@ export interface ExecOptions {
   env?: NodeJS.ProcessEnv;
 }
 
+/** Antialias mode for rendering */
+export type AntialiasMode = 'default' | 'none' | 'gray' | 'subpixel';
+
 /**
  * Options for PDF to image conversion
  */
@@ -64,6 +67,137 @@ export interface ConvertOptions {
 
   /** Convert only this page number (default: all pages) */
   page?: number | null;
+
+  /** Convert specific pages (e.g., [1, 3, 5]) */
+  pages?: number[];
+
+  /** Resolution in DPI (alternative to scale, takes precedence) */
+  dpi?: number;
+
+  /** JPEG quality 1-100 (only for JPEG format) */
+  quality?: number;
+
+  /** First page to convert (for page ranges) */
+  firstPage?: number;
+
+  /** Last page to convert (for page ranges) */
+  lastPage?: number;
+
+  /** PDF user password (for encrypted PDFs) */
+  password?: string;
+
+  /** PDF owner password (for encrypted PDFs) */
+  ownerPassword?: string;
+
+  /** Use crop box instead of media box */
+  cropBox?: boolean;
+
+  /** Transparent background for PNG */
+  transparent?: boolean;
+
+  /** Antialias mode for rendering */
+  antialias?: AntialiasMode;
+}
+
+/**
+ * Options for text extraction
+ */
+export interface TextOptions {
+  /** Extract from specific page only */
+  page?: number;
+
+  /** First page to extract (for page ranges) */
+  firstPage?: number;
+
+  /** Last page to extract (for page ranges) */
+  lastPage?: number;
+
+  /** Maintain original layout spacing */
+  layout?: boolean;
+
+  /** Raw text extraction order */
+  raw?: boolean;
+
+  /** PDF user password (for encrypted PDFs) */
+  password?: string;
+
+  /** Output encoding (default: UTF-8) */
+  encoding?: string;
+
+  /** Line ending style */
+  eol?: 'unix' | 'dos' | 'mac';
+
+  /** Skip diagonal text */
+  noDiag?: boolean;
+
+  /** No page break characters (form feed) */
+  noPageBreaks?: boolean;
+}
+
+/**
+ * Options for HTML conversion
+ */
+export interface HtmlOptions {
+  /** Convert specific page only */
+  page?: number;
+
+  /** First page to convert (for page ranges) */
+  firstPage?: number;
+
+  /** Last page to convert (for page ranges) */
+  lastPage?: number;
+
+  /** PDF user password (for encrypted PDFs) */
+  password?: string;
+
+  /** Don't generate frame structure */
+  noFrames?: boolean;
+
+  /** Generate complex HTML (tries to preserve layout) */
+  complex?: boolean;
+
+  /** Generate single HTML page for all pages */
+  singlePage?: boolean;
+
+  /** Don't include images in output */
+  ignoreImages?: boolean;
+
+  /** Zoom factor (e.g., 1.5 for 150%) */
+  zoom?: number;
+}
+
+/**
+ * Result of text extraction for a single page
+ */
+export interface TextResult {
+  /** Page number (1-indexed) */
+  page: number;
+
+  /** Extracted text content */
+  text: string;
+}
+
+/**
+ * Font information from pdffonts
+ */
+export interface FontInfo {
+  /** Font name */
+  name: string;
+
+  /** Font type (e.g., "Type 1", "TrueType", "CID Type 0") */
+  type: string;
+
+  /** Font encoding */
+  encoding: string;
+
+  /** Whether the font is embedded in the PDF */
+  embedded: boolean;
+
+  /** Whether the font is a subset */
+  subset: boolean;
+
+  /** Whether the font has Unicode mapping */
+  unicode: boolean;
 }
 
 /**
@@ -84,6 +218,82 @@ export interface PageStreamResult {
   page: number;
   /** Image data as Readable stream */
   stream: Readable;
+}
+
+/**
+ * Result of splitting a PDF page
+ */
+export interface SplitResult {
+  /** Page number (1-indexed) */
+  page: number;
+  /** Single-page PDF as Buffer */
+  data: Buffer;
+}
+
+/**
+ * Result of splitting a PDF page to stream
+ */
+export interface SplitStreamResult {
+  /** Page number (1-indexed) */
+  page: number;
+  /** Single-page PDF as Readable stream */
+  stream: Readable;
+}
+
+/**
+ * PDF attachment information
+ */
+export interface Attachment {
+  /** Attachment index (1-indexed) */
+  index: number;
+  /** Attachment filename */
+  name: string;
+  /** Optional description */
+  description?: string;
+  /** File size in bytes */
+  size: number;
+  /** Creation date (if available) */
+  creationDate?: string;
+  /** Modification date (if available) */
+  modDate?: string;
+}
+
+/**
+ * Extracted attachment data
+ */
+export interface ExtractedAttachment {
+  /** Attachment filename */
+  name: string;
+  /** Attachment data */
+  data: Buffer;
+}
+
+/**
+ * Digital signature information
+ */
+export interface SignatureDetails {
+  /** Signer name */
+  signerName?: string;
+  /** Signer certificate info */
+  signerCertificate?: string;
+  /** Signing time */
+  signTime?: string;
+  /** Hash algorithm used */
+  hashAlgorithm?: string;
+  /** Whether signature is valid */
+  valid: boolean;
+  /** Whether signature is trusted */
+  trusted: boolean;
+}
+
+/**
+ * Result of signature verification
+ */
+export interface SignatureInfo {
+  /** Whether the PDF is signed */
+  signed: boolean;
+  /** List of signatures found */
+  signatures: SignatureDetails[];
 }
 
 /**
