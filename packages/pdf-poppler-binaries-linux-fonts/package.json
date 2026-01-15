@@ -1,6 +1,6 @@
 {
   "name": "pdf-poppler-binaries-linux-fonts",
-  "version": "0.1.0-beta",
+  "version": "0.1.2-beta",
   "description": "Linux binaries for pdf-poppler with bundled fonts. Includes Poppler utilities, fontconfig, and Liberation Sans fonts for environments without system fonts (Lambda, containers).",
   "main": "index.js",
   "repository": {
