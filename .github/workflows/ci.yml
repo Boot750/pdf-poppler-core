@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ master, main, develop ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ master, main, develop ]
+    branches: [ main, develop ]
 
 jobs:
   test:
@@ -106,19 +106,21 @@ jobs:
       run: |
         echo "=== Debugging pdf-poppler path resolution ==="
         node -e "
-        const poppler = require('pdf-poppler-core');
-        console.log('Resolved poppler path:', poppler.path);
-        console.log('Has bundled Xvfb:', poppler.hasBundledXvfb);
-        console.log('Detected version:', poppler.version);
+        const { PdfPoppler } = require('pdf-poppler-core');
+        const poppler = new PdfPoppler();
+        console.log('Resolved poppler path:', poppler.getPath());
+        console.log('Has bundled Xvfb:', poppler.hasBundledXvfb());
+        console.log('Detected version:', poppler.getVersion());
         console.log('Available versions:', poppler.getAvailableVersions());
-        console.log('Exec options:', JSON.stringify(poppler.exec_options, null, 2));
+        console.log('Exec options:', JSON.stringify(poppler.getExecOptions(), null, 2));
 
         const fs = require('fs');
         const path = require('path');
-        if (poppler.path && fs.existsSync(poppler.path)) {
-          console.log('Binary directory contents:', fs.readdirSync(poppler.path));
+        const popplerPath = poppler.getPath();
+        if (popplerPath && fs.existsSync(popplerPath)) {
+          console.log('Binary directory contents:', fs.readdirSync(popplerPath));
           const binaryName = process.platform === 'win32' ? 'pdftocairo.exe' : 'pdftocairo';
-          const pdftocairo = path.join(poppler.path, binaryName);
+          const pdftocairo = path.join(popplerPath, binaryName);
           console.log(binaryName + ' exists:', fs.existsSync(pdftocairo));
           if (fs.existsSync(pdftocairo)) {
             const stats = fs.statSync(pdftocairo);
@@ -146,16 +148,21 @@ jobs:
       run: |
         if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
           xvfb-run -a node -e "
-          const poppler = require('pdf-poppler-core');
+          const { PdfPoppler } = require('pdf-poppler-core');
+          const fs = require('fs');
+
+          const poppler = new PdfPoppler();
           console.log('Platform:', process.platform);
-          console.log('Poppler path:', poppler.path);
+          console.log('Poppler path:', poppler.getPath());
 
           (async () => {
             try {
-              const info = await poppler.info('sample.pdf');
+              const pdfBuffer = fs.readFileSync('sample.pdf');
+
+              const info = await poppler.info(pdfBuffer);
               console.log('PDF Info test passed - Pages:', info.pages);
 
-              const imageData = await poppler.imgdata('sample.pdf');
+              const imageData = await poppler.listImages(pdfBuffer);
               console.log('Image data test passed - Found', imageData.length, 'images');
 
               console.log('All basic functionality tests passed!');
@@ -167,16 +174,21 @@ jobs:
           "
         else
           node -e "
-          const poppler = require('pdf-poppler-core');
+          const { PdfPoppler } = require('pdf-poppler-core');
+          const fs = require('fs');
+
+          const poppler = new PdfPoppler();
           console.log('Platform:', process.platform);
-          console.log('Poppler path:', poppler.path);
+          console.log('Poppler path:', poppler.getPath());
 
           (async () => {
             try {
-              const info = await poppler.info('sample.pdf');
+              const pdfBuffer = fs.readFileSync('sample.pdf');
+
+              const info = await poppler.info(pdfBuffer);
               console.log('PDF Info test passed - Pages:', info.pages);
 
-              const imageData = await poppler.imgdata('sample.pdf');
+              const imageData = await poppler.listImages(pdfBuffer);
               console.log('Image data test passed - Found', imageData.length, 'images');
 
               console.log('All basic functionality tests passed!');
