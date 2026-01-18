@@ -6,7 +6,7 @@ Utility scripts for building, testing, and publishing pdf-poppler packages.
 
 ```
 scripts/
-  build/              # Binary download/build scripts
+  package/              # Binary download/build scripts
   test/               # Docker test environments
   prepare-publish.sh  # Prepare packages for publishing
   publish-packages.sh # Publish to npm
@@ -19,16 +19,16 @@ Scripts for downloading and building Poppler binaries.
 
 | Script | Description |
 |--------|-------------|
-| `build/get-poppler-linux.dockerfile` | Build Linux binaries from Amazon Linux |
-| `build/get-poppler-with-xvfb-linux.dockerfile` | Build Linux binaries with Xvfb |
-| `build/build-bundled-xvfb.sh` | Automated build script for Xvfb variant |
-| `build/get-poppler-windows.ps1` | Download Windows binaries |
-| `build/Dockerfile.darwin` | Cross-compile macOS binaries using osxcross |
-| `build/Dockerfile.darwin-homebrew` | Extract macOS binaries from Homebrew bottles |
-| `build/build-darwin-binaries.sh` | Build macOS binaries (run on macOS) |
-| `build/package-macos-sdk.sh` | Package macOS SDK for osxcross (run on macOS) |
+| `package/get-poppler-linux.dockerfile` | Build Linux binaries from Amazon Linux |
+| `package/get-poppler-with-xvfb-linux.dockerfile` | Build Linux binaries with Xvfb |
+| `package/build-bundled-xvfb.sh` | Automated build script for Xvfb variant |
+| `package/get-poppler-windows.ps1` | Download Windows binaries |
+| `package/Dockerfile.darwin` | Cross-compile macOS binaries using osxcross |
+| `package/Dockerfile.darwin-homebrew` | Extract macOS binaries from Homebrew bottles |
+| `package/build-darwin-binaries.sh` | Build macOS binaries (run on macOS) |
+| `package/package-macos-sdk.sh` | Package macOS SDK for osxcross (run on macOS) |
 
-See [build/README.md](build/README.md) for details.
+See [package/README.md](package/README.md) for details.
 
 ## Test Scripts
 
@@ -56,7 +56,7 @@ Scripts for releasing packages to npm.
 ### Build Linux Binaries
 
 ```bash
-./scripts/build/build-bundled-xvfb.sh
+./scripts/package/build-bundled-xvfb.sh
 ```
 
 ### Build Windows Binaries
@@ -74,7 +74,7 @@ Go to Actions → Build macOS Binaries → Run workflow
 **Option 2: On a Mac**
 
 ```bash
-./scripts/build/build-darwin-binaries.sh ./output
+./scripts/package/build-darwin-binaries.sh ./output
 cp -r output/poppler-* packages/pdf-poppler-binaries-darwin/lib/osx/
 ```
 
@@ -82,9 +82,9 @@ cp -r output/poppler-* packages/pdf-poppler-binaries-darwin/lib/osx/
 
 ```bash
 # First, on a Mac, create the SDK tarball:
-./scripts/build/package-macos-sdk.sh 14.0
+./scripts/package/package-macos-sdk.sh 14.0
 
-# Then copy MacOSX14.0.sdk.tar.xz to scripts/build/ and:
+# Then copy MacOSX14.0.sdk.tar.xz to scripts/package/ and:
 cd scripts/build
 docker build -f Dockerfile.darwin -t poppler-darwin-builder .
 docker run --rm -v $(pwd)/output:/artifacts poppler-darwin-builder

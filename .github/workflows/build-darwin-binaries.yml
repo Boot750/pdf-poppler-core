@@ -26,8 +26,8 @@ jobs:
 
     - name: Build and package binaries
       run: |
-        chmod +x scripts/build/build-darwin-binaries.sh
-        ./scripts/build/build-darwin-binaries.sh ./output
+        chmod +x scripts/package/build-darwin-binaries.sh
+        ./scripts/package/build-darwin-binaries.sh ./output
 
     - name: Show contents
       run: |

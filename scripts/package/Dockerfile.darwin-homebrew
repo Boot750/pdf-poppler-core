@@ -1,0 +1,141 @@
+# Dockerfile for extracting macOS Poppler binaries from Homebrew bottles
+#
+# This approach downloads pre-built binaries from Homebrew instead of cross-compiling.
+# Much simpler and faster than using osxcross.
+#
+# Build with:
+#   docker build -f Dockerfile.darwin-homebrew -t poppler-darwin-extractor .
+#   docker run --rm -v $(pwd)/output:/output poppler-darwin-extractor
+#
+
+FROM ubuntu:22.04
+
+ARG POPPLER_VERSION=24.08.0
+# Homebrew bottle revision (check https://formulae.brew.sh/formula/poppler)
+ARG BOTTLE_REVISION=1
+# Target macOS version: arm64_sonoma, arm64_ventura, sonoma, ventura, monterey
+ARG MACOS_TARGET=sonoma
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    jq \
+    tar \
+    gzip \
+    xz-utils \
+    ruby \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Script to download and extract Homebrew bottles
+RUN cat > /build/extract-bottles.sh << 'SCRIPT'
+#!/bin/bash
+set -e
+
+POPPLER_VERSION="${POPPLER_VERSION:-24.08.0}"
+MACOS_TARGET="${MACOS_TARGET:-sonoma}"
+OUTPUT_DIR="/output/poppler-${POPPLER_VERSION}"
+
+echo "=== Extracting Poppler ${POPPLER_VERSION} for macOS (${MACOS_TARGET}) ==="
+
+# Create output directories
+mkdir -p "${OUTPUT_DIR}/bin"
+mkdir -p "${OUTPUT_DIR}/lib"
+mkdir -p /build/bottles
+
+cd /build/bottles
+
+# Function to download a Homebrew bottle
+download_bottle() {
+    local formula=$1
+    local version=$2
+
+    echo "Fetching bottle info for ${formula}..."
+
+    # Get bottle URL from Homebrew API
+    local api_url="https://formulae.brew.sh/api/formula/${formula}.json"
+    local bottle_info=$(curl -sL "$api_url")
+
+    # Extract the bottle URL for the target platform
+    local bottle_url=$(echo "$bottle_info" | jq -r ".bottle.stable.files.${MACOS_TARGET}.url // empty")
+
+    if [ -z "$bottle_url" ]; then
+        # Try x86_64 version
+        bottle_url=$(echo "$bottle_info" | jq -r ".bottle.stable.files.x86_64_linux.url // empty")
+    fi
+
+    if [ -z "$bottle_url" ]; then
+        echo "Warning: No bottle found for ${formula} on ${MACOS_TARGET}"
+        return 1
+    fi
+
+    echo "Downloading ${formula} from ${bottle_url}..."
+    local filename="${formula}.tar.gz"
+    curl -L -o "$filename" "$bottle_url"
+
+    echo "Extracting ${formula}..."
+    tar xzf "$filename"
+    rm "$filename"
+
+    return 0
+}
+
+# Download poppler and dependencies
+download_bottle "poppler" "${POPPLER_VERSION}" || true
+download_bottle "cairo" "" || true
+download_bottle "fontconfig" "" || true
+download_bottle "freetype" "" || true
+download_bottle "glib" "" || true
+download_bottle "jpeg-turbo" "" || true
+download_bottle "libpng" "" || true
+download_bottle "libtiff" "" || true
+download_bottle "little-cms2" "" || true
+download_bottle "openjpeg" "" || true
+download_bottle "pixman" "" || true
+download_bottle "gettext" "" || true
+download_bottle "pcre2" "" || true
+
+echo ""
+echo "=== Collecting binaries ==="
+
+# Find and copy poppler binaries
+find . -name "pdfinfo" -type f -exec cp {} "${OUTPUT_DIR}/bin/" \; 2>/dev/null || true
+find . -name "pdftocairo" -type f -exec cp {} "${OUTPUT_DIR}/bin/" \; 2>/dev/null || true
+find . -name "pdftotext" -type f -exec cp {} "${OUTPUT_DIR}/bin/" \; 2>/dev/null || true
+find . -name "pdffonts" -type f -exec cp {} "${OUTPUT_DIR}/bin/" \; 2>/dev/null || true
+find . -name "pdfimages" -type f -exec cp {} "${OUTPUT_DIR}/bin/" \; 2>/dev/null || true
+find . -name "pdfseparate" -type f -exec cp {} "${OUTPUT_DIR}/bin/" \; 2>/dev/null || true
+find . -name "pdfunite" -type f -exec cp {} "${OUTPUT_DIR}/bin/" \; 2>/dev/null || true
+find . -name "pdfdetach" -type f -exec cp {} "${OUTPUT_DIR}/bin/" \; 2>/dev/null || true
+find . -name "pdftohtml" -type f -exec cp {} "${OUTPUT_DIR}/bin/" \; 2>/dev/null || true
+find . -name "pdftoppm" -type f -exec cp {} "${OUTPUT_DIR}/bin/" \; 2>/dev/null || true
+find . -name "pdftops" -type f -exec cp {} "${OUTPUT_DIR}/bin/" \; 2>/dev/null || true
+find . -name "pdfattach" -type f -exec cp {} "${OUTPUT_DIR}/bin/" \; 2>/dev/null || true
+find . -name "pdfsig" -type f -exec cp {} "${OUTPUT_DIR}/bin/" \; 2>/dev/null || true
+
+# Collect all dylib files
+echo "Collecting shared libraries..."
+find . -name "*.dylib" -exec cp {} "${OUTPUT_DIR}/lib/" \; 2>/dev/null || true
+
+# Create version file
+echo "${POPPLER_VERSION}" > "${OUTPUT_DIR}/VERSION"
+
+echo ""
+echo "=== Contents of ${OUTPUT_DIR}/bin ==="
+ls -la "${OUTPUT_DIR}/bin/" || echo "(empty)"
+
+echo ""
+echo "=== Contents of ${OUTPUT_DIR}/lib ==="
+ls -la "${OUTPUT_DIR}/lib/" | head -20 || echo "(empty)"
+echo "..."
+ls "${OUTPUT_DIR}/lib/" | wc -l | xargs -I {} echo "Total: {} files"
+
+echo ""
+echo "=== Done ==="
+SCRIPT
+
+RUN chmod +x /build/extract-bottles.sh
+
+CMD ["/build/extract-bottles.sh"]
