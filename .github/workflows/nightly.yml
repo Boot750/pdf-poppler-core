@@ -44,9 +44,9 @@ jobs:
 
     - name: Performance benchmarks
       run: |
+        mkdir -p test-output
         node -e "
-        const poppler = require('./index.js');
-        const fs = require('fs');
+        const poppler = require('./packages/pdf-poppler-core');
 
         (async () => {
           console.log('Running performance benchmarks...');
@@ -83,7 +83,7 @@ jobs:
     - name: Memory usage test
       run: |
         node -e "
-        const poppler = require('./index.js');
+        const poppler = require('./packages/pdf-poppler-core');
 
         (async () => {
           const initialMemory = process.memoryUsage();
@@ -116,7 +116,7 @@ jobs:
     - name: Stress test
       run: |
         node -e "
-        const poppler = require('./index.js');
+        const poppler = require('./packages/pdf-poppler-core');
 
         (async () => {
           console.log('Running stress test...');
