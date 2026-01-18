@@ -85,6 +85,20 @@ describe('PDF Info Functionality', () => {
       expect(parseInt(info.pages)).toBeGreaterThan(0);
     });
 
+    it('should work with file path input', async () => {
+      const info = await poppler.info(samplePdfPath);
+
+      expect(info).toBeDefined();
+      expect(info.pages).toBeDefined();
+      expect(parseInt(info.pages)).toBeGreaterThan(0);
+    });
+
+    it('should throw InvalidPdfError for non-existent file path', async () => {
+      const { InvalidPdfError } = await import('pdf-poppler-core');
+      await expect(poppler.info('/non/existent/file.pdf')).rejects.toThrow(InvalidPdfError);
+      await expect(poppler.info('/non/existent/file.pdf')).rejects.toThrow('File not found');
+    });
+
     it('should parse metadata fields correctly', async () => {
       const info = await poppler.info(samplePdfBuffer);
 

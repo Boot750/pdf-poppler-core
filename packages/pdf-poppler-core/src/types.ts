@@ -10,8 +10,8 @@ export type Platform = 'win32' | 'darwin' | 'linux';
 /** Supported output formats for PDF conversion */
 export type OutputFormat = 'png' | 'jpeg' | 'tiff' | 'pdf' | 'ps' | 'eps' | 'svg';
 
-/** Input source - Buffer, Uint8Array, or Readable stream */
-export type PdfInput = Buffer | Uint8Array | Readable;
+/** Input source - file path, Buffer, Uint8Array, or Readable stream */
+export type PdfInput = string | Buffer | Uint8Array | Readable;
 
 /**
  * Configuration options for PdfPoppler

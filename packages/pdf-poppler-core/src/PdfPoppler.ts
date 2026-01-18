@@ -1466,6 +1466,14 @@ export class PdfPoppler {
       throw new InvalidPdfError('Input cannot be null or undefined');
     }
 
+    // Handle file path (string)
+    if (typeof input === 'string') {
+      if (!fs.existsSync(input)) {
+        throw new InvalidPdfError(`File not found: ${input}`);
+      }
+      return fs.readFileSync(input);
+    }
+
     if (Buffer.isBuffer(input)) {
       return input;
     }
@@ -1475,7 +1483,7 @@ export class PdfPoppler {
 
     // Check if it's a readable stream (has .on method)
     if (typeof (input as Readable).on !== 'function') {
-      throw new InvalidPdfError('Input must be a Buffer, Uint8Array, or Readable stream');
+      throw new InvalidPdfError('Input must be a file path, Buffer, Uint8Array, or Readable stream');
     }
 
     // Readable stream - collect chunks
