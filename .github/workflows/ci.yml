@@ -106,21 +106,19 @@ jobs:
       run: |
         echo "=== Debugging pdf-poppler path resolution ==="
         node -e "
-        const { PdfPoppler } = require('pdf-poppler-core');
-        const poppler = new PdfPoppler();
-        console.log('Resolved poppler path:', poppler.getPath());
-        console.log('Has bundled Xvfb:', poppler.hasBundledXvfb());
-        console.log('Detected version:', poppler.getVersion());
+        const poppler = require('pdf-poppler-core');
+        console.log('Resolved poppler path:', poppler.path);
+        console.log('Has bundled Xvfb:', poppler.hasBundledXvfb);
+        console.log('Detected version:', poppler.version);
         console.log('Available versions:', poppler.getAvailableVersions());
-        console.log('Exec options:', JSON.stringify(poppler.getExecOptions(), null, 2));
+        console.log('Exec options:', JSON.stringify(poppler.exec_options, null, 2));
 
         const fs = require('fs');
         const path = require('path');
-        const popplerPath = poppler.getPath();
-        if (popplerPath && fs.existsSync(popplerPath)) {
-          console.log('Binary directory contents:', fs.readdirSync(popplerPath));
+        if (poppler.path && fs.existsSync(poppler.path)) {
+          console.log('Binary directory contents:', fs.readdirSync(poppler.path));
           const binaryName = process.platform === 'win32' ? 'pdftocairo.exe' : 'pdftocairo';
-          const pdftocairo = path.join(popplerPath, binaryName);
+          const pdftocairo = path.join(poppler.path, binaryName);
           console.log(binaryName + ' exists:', fs.existsSync(pdftocairo));
           if (fs.existsSync(pdftocairo)) {
             const stats = fs.statSync(pdftocairo);
@@ -148,21 +146,16 @@ jobs:
       run: |
         if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
           xvfb-run -a node -e "
-          const { PdfPoppler } = require('pdf-poppler-core');
-          const fs = require('fs');
-
-          const poppler = new PdfPoppler();
+          const poppler = require('pdf-poppler-core');
           console.log('Platform:', process.platform);
-          console.log('Poppler path:', poppler.getPath());
+          console.log('Poppler path:', poppler.path);
 
           (async () => {
             try {
-              const pdfBuffer = fs.readFileSync('sample.pdf');
-
-              const info = await poppler.info(pdfBuffer);
+              const info = await poppler.info('sample.pdf');
               console.log('PDF Info test passed - Pages:', info.pages);
 
-              const imageData = await poppler.listImages(pdfBuffer);
+              const imageData = await poppler.imgdata('sample.pdf');
               console.log('Image data test passed - Found', imageData.length, 'images');
 
               console.log('All basic functionality tests passed!');
@@ -174,21 +167,16 @@ jobs:
           "
         else
           node -e "
-          const { PdfPoppler } = require('pdf-poppler-core');
-          const fs = require('fs');
-
-          const poppler = new PdfPoppler();
+          const poppler = require('pdf-poppler-core');
           console.log('Platform:', process.platform);
-          console.log('Poppler path:', poppler.getPath());
+          console.log('Poppler path:', poppler.path);
 
           (async () => {
             try {
-              const pdfBuffer = fs.readFileSync('sample.pdf');
-
-              const info = await poppler.info(pdfBuffer);
+              const info = await poppler.info('sample.pdf');
               console.log('PDF Info test passed - Pages:', info.pages);
 
-              const imageData = await poppler.listImages(pdfBuffer);
+              const imageData = await poppler.imgdata('sample.pdf');
               console.log('Image data test passed - Found', imageData.length, 'images');
 
               console.log('All basic functionality tests passed!');
