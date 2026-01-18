@@ -1,19 +1,22 @@
 import * as path from 'path';
 import * as fs from 'fs';
+import { Readable } from 'stream';
 import { PdfPoppler } from 'pdf-poppler-core';
 
 describe('PDF Image Data Functionality', () => {
   const samplePdfPath = path.join(__dirname, '..', 'sample.pdf');
   let poppler: PdfPoppler;
+  let samplePdfBuffer: Buffer;
 
   beforeAll(() => {
     expect(fs.existsSync(samplePdfPath)).toBe(true);
     poppler = new PdfPoppler();
+    samplePdfBuffer = fs.readFileSync(samplePdfPath);
   });
 
   describe('poppler.imgdata()', () => {
-    it('should extract image data from PDF', async () => {
-      const imageData = await poppler.imgdata(samplePdfPath);
+    it('should extract image data from PDF buffer', async () => {
+      const imageData = await poppler.imgdata(samplePdfBuffer);
 
       expect(Array.isArray(imageData)).toBe(true);
 
@@ -28,7 +31,7 @@ describe('PDF Image Data Functionality', () => {
 
     it('should return empty array for PDF without images', async () => {
       // Most PDFs might not have embedded images
-      const imageData = await poppler.imgdata(samplePdfPath);
+      const imageData = await poppler.imgdata(samplePdfBuffer);
 
       expect(Array.isArray(imageData)).toBe(true);
       // Length could be 0 or more depending on the sample PDF
@@ -36,7 +39,7 @@ describe('PDF Image Data Functionality', () => {
     });
 
     it('should have consistent data structure for each image', async () => {
-      const imageData = await poppler.imgdata(samplePdfPath);
+      const imageData = await poppler.imgdata(samplePdfBuffer);
 
       if (imageData.length > 0) {
         // Check that all image objects have similar structure
@@ -62,7 +65,7 @@ describe('PDF Image Data Functionality', () => {
     });
 
     it('should handle PDF with various image types', async () => {
-      const imageData = await poppler.imgdata(samplePdfPath);
+      const imageData = await poppler.imgdata(samplePdfBuffer);
 
       if (imageData.length > 0) {
         imageData.forEach((image: any) => {
@@ -89,7 +92,7 @@ describe('PDF Image Data Functionality', () => {
     });
 
     it('should parse numeric values correctly', async () => {
-      const imageData = await poppler.imgdata(samplePdfPath);
+      const imageData = await poppler.imgdata(samplePdfBuffer);
 
       if (imageData.length > 0) {
         imageData.forEach((image: any) => {
@@ -117,41 +120,33 @@ describe('PDF Image Data Functionality', () => {
       }
     });
 
-    it('should handle relative and absolute file paths', async () => {
-      // Test with relative path
-      const relativeData = await poppler.imgdata('sample.pdf');
-      expect(Array.isArray(relativeData)).toBe(true);
+    it('should work with Uint8Array input', async () => {
+      const uint8Array = new Uint8Array(samplePdfBuffer);
+      const imageData = await poppler.imgdata(uint8Array);
 
-      // Test with absolute path
-      const absoluteData = await poppler.imgdata(path.resolve('sample.pdf'));
-      expect(Array.isArray(absoluteData)).toBe(true);
+      expect(Array.isArray(imageData)).toBe(true);
+    });
 
-      // Results should be the same
-      expect(relativeData.length).toBe(absoluteData.length);
+    it('should work with Readable stream input', async () => {
+      const stream = Readable.from(samplePdfBuffer);
+      const imageData = await poppler.imgdata(stream);
 
-      if (relativeData.length > 0 && absoluteData.length > 0) {
-        // Compare first image data
-        expect(Object.keys(relativeData[0])).toEqual(Object.keys(absoluteData[0]));
-      }
+      expect(Array.isArray(imageData)).toBe(true);
     });
 
     it('should handle PDFs with different image encoding types', async () => {
-      const imageData = await poppler.imgdata(samplePdfPath);
+      const imageData = await poppler.imgdata(samplePdfBuffer);
 
       if (imageData.length > 0) {
         imageData.forEach((image: any) => {
           // Verify encoding field if present
           if (image.enc) {
             expect(typeof image.enc).toBe('string');
-            // Common encoding types in PDFs
-            const validEncodings = ['jpeg', 'ccitt', 'flate', 'image', 'jpx', 'jbig2'];
-            // Don't enforce specific values as it depends on the PDF content
           }
 
           // Verify color space if present
           if (image.color) {
             expect(typeof image.color).toBe('string');
-            // Common color spaces: gray, rgb, cmyk, icc, etc.
           }
         });
       }
@@ -159,23 +154,16 @@ describe('PDF Image Data Functionality', () => {
   });
 
   describe('Error Handling', () => {
-    it('should handle non-existent file gracefully', async () => {
-      const nonExistentPath = path.join(__dirname, 'non-existent.pdf');
-
-      await expect(poppler.imgdata(nonExistentPath)).rejects.toThrow();
-    });
-
-    it('should handle invalid file type gracefully', async () => {
-      const textFilePath = path.join(__dirname, '..', 'package.json');
-
-      await expect(poppler.imgdata(textFilePath)).rejects.toThrow();
+    it('should handle invalid PDF data gracefully', async () => {
+      const invalidBuffer = Buffer.from('not a pdf file');
+      await expect(poppler.imgdata(invalidBuffer)).rejects.toThrow();
     });
 
     it('should provide meaningful error messages', async () => {
-      await expect(poppler.imgdata('non-existent-file.pdf')).rejects.toThrow();
+      const invalidBuffer = Buffer.from('invalid pdf content');
 
       try {
-        await poppler.imgdata('non-existent-file.pdf');
+        await poppler.imgdata(invalidBuffer);
         fail('Expected an error to be thrown');
       } catch (error: any) {
         expect(error).toBeTruthy();
@@ -185,28 +173,14 @@ describe('PDF Image Data Functionality', () => {
       }
     });
 
-    it('should handle empty file path', async () => {
-      await expect(poppler.imgdata('')).rejects.toThrow();
+    it('should handle empty buffer', async () => {
+      const emptyBuffer = Buffer.alloc(0);
+      await expect(poppler.imgdata(emptyBuffer)).rejects.toThrow();
     });
 
     it('should handle null/undefined input', async () => {
       await expect(poppler.imgdata(null as any)).rejects.toThrow();
       await expect(poppler.imgdata(undefined as any)).rejects.toThrow();
-    });
-
-    it('should handle malformed PDF gracefully', async () => {
-      // Create a temporary malformed PDF file
-      const malformedPdfPath = path.join(__dirname, '..', 'test-malformed.pdf');
-      fs.writeFileSync(malformedPdfPath, 'This is not a PDF file content');
-
-      try {
-        await expect(poppler.imgdata(malformedPdfPath)).rejects.toThrow();
-      } finally {
-        // Clean up
-        if (fs.existsSync(malformedPdfPath)) {
-          fs.unlinkSync(malformedPdfPath);
-        }
-      }
     });
   });
 
@@ -214,7 +188,7 @@ describe('PDF Image Data Functionality', () => {
     it('should complete within reasonable time', async () => {
       const startTime = Date.now();
 
-      await poppler.imgdata(samplePdfPath);
+      await poppler.imgdata(samplePdfBuffer);
 
       const endTime = Date.now();
       const executionTime = endTime - startTime;
@@ -224,7 +198,7 @@ describe('PDF Image Data Functionality', () => {
     });
 
     it('should handle empty image data gracefully', async () => {
-      const imageData = await poppler.imgdata(samplePdfPath);
+      const imageData = await poppler.imgdata(samplePdfBuffer);
 
       // Should always return an array, even if empty
       expect(Array.isArray(imageData)).toBe(true);
@@ -237,7 +211,7 @@ describe('PDF Image Data Functionality', () => {
 
     it('should handle PDF with many images efficiently', async () => {
       // This test depends on the sample PDF content
-      const imageData = await poppler.imgdata(samplePdfPath);
+      const imageData = await poppler.imgdata(samplePdfBuffer);
 
       if (imageData.length > 10) {
         // If PDF has many images, verify they're all processed
@@ -251,8 +225,8 @@ describe('PDF Image Data Functionality', () => {
     });
 
     it('should maintain data consistency across multiple calls', async () => {
-      const firstCall = await poppler.imgdata(samplePdfPath);
-      const secondCall = await poppler.imgdata(samplePdfPath);
+      const firstCall = await poppler.imgdata(samplePdfBuffer);
+      const secondCall = await poppler.imgdata(samplePdfBuffer);
 
       expect(firstCall.length).toBe(secondCall.length);
 
@@ -263,6 +237,40 @@ describe('PDF Image Data Functionality', () => {
         // Compare actual data
         expect(firstCall[0]).toEqual(secondCall[0]);
       }
+    });
+  });
+
+  describe('listImages() - renamed from imgdata()', () => {
+    it('should extract image metadata using listImages()', async () => {
+      const images = await poppler.listImages(samplePdfBuffer);
+      expect(Array.isArray(images)).toBe(true);
+    });
+
+    it('should maintain backward compatibility with imgdata()', async () => {
+      const imagesFromImgdata = await poppler.imgdata(samplePdfBuffer);
+      const imagesFromListImages = await poppler.listImages(samplePdfBuffer);
+
+      expect(imagesFromImgdata.length).toBe(imagesFromListImages.length);
+
+      if (imagesFromImgdata.length > 0) {
+        expect(imagesFromImgdata[0]).toEqual(imagesFromListImages[0]);
+      }
+    });
+
+    it('should work with all input types using listImages()', async () => {
+      // Buffer
+      const fromBuffer = await poppler.listImages(samplePdfBuffer);
+      expect(Array.isArray(fromBuffer)).toBe(true);
+
+      // Uint8Array
+      const uint8Array = new Uint8Array(samplePdfBuffer);
+      const fromUint8 = await poppler.listImages(uint8Array);
+      expect(Array.isArray(fromUint8)).toBe(true);
+
+      // Readable stream
+      const stream = Readable.from(samplePdfBuffer);
+      const fromStream = await poppler.listImages(stream);
+      expect(Array.isArray(fromStream)).toBe(true);
     });
   });
 });

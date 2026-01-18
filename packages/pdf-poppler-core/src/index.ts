@@ -1,26 +1,35 @@
 /**
  * pdf-poppler-core
  *
- * Convert PDF files to images using Poppler with a class-based API.
+ * Convert PDF to images using Poppler with a streaming API.
+ * All operations accept Buffer, Uint8Array, or Readable stream as input.
+ * Output is returned as Buffer or Readable stream (no file I/O).
  *
  * @example
  * ```typescript
  * import { PdfPoppler } from 'pdf-poppler-core';
+ * import * as fs from 'fs';
  *
- * // Auto-detect everything
  * const poppler = new PdfPoppler();
- * const info = await poppler.info('/path/to/file.pdf');
- * await poppler.convert('/path/to/file.pdf', { format: 'png' });
+ * const pdfBuffer = fs.readFileSync('input.pdf');
  *
- * // With builder pattern
- * const poppler = PdfPoppler.configure()
- *   .withOsBinary()
- *   .withPreferXvfb(false)
- *   .build();
+ * // Get PDF info
+ * const info = await poppler.info(pdfBuffer);
+ *
+ * // Convert to image buffers
+ * const pages = await poppler.convert(pdfBuffer, { format: 'png' });
+ * pages.forEach(({ page, data }) => {
+ *   fs.writeFileSync(`page-${page}.png`, data);
+ * });
+ *
+ * // Or get streams for piping
+ * const streams = await poppler.convertToStream(pdfBuffer, { format: 'png' });
+ *
+ * // Flatten PDF
+ * const flattened = await poppler.flatten(pdfBuffer);
  *
  * // Factory methods
  * const lambdaPoppler = PdfPoppler.forLambda();
- * const ciPoppler = PdfPoppler.forCI();
  * ```
  */
 
@@ -34,14 +43,37 @@ export { PdfPopplerConfigBuilder, configure } from './PdfPopplerConfig';
 export {
   Platform,
   OutputFormat,
+  AntialiasMode,
   PdfPopplerConfig,
   ExecOptions,
   ConvertOptions,
+  TextOptions,
+  TextResult,
+  HtmlOptions,
+  FontInfo,
   PdfInfo,
   ImageData,
   VersionInfo,
   ResolvedConfig,
+  PdfInput,
+  PageResult,
+  PageStreamResult,
+  SplitResult,
+  SplitStreamResult,
+  Attachment,
+  ExtractedAttachment,
+  SignatureDetails,
+  SignatureInfo,
 } from './types';
+
+// Error types
+export {
+  PdfPopplerError,
+  InvalidPdfError,
+  EncryptedPdfError,
+  PageOutOfRangeError,
+  BinaryNotFoundError,
+} from './errors';
 
 // Platform utilities (for advanced usage)
 export { BinaryResolver } from './platform/BinaryResolver';

@@ -45,34 +45,36 @@ jobs:
     - name: Performance benchmarks
       run: |
         node -e "
-        const poppler = require('./index.js');
+        const { PdfPoppler } = require('./packages/pdf-poppler-core');
         const fs = require('fs');
 
         (async () => {
           console.log('Running performance benchmarks...');
 
+          const poppler = new PdfPoppler();
+          const samplePdf = fs.readFileSync('sample.pdf');
+
           // Test PDF info extraction speed
           const startInfo = Date.now();
           for (let i = 0; i < 10; i++) {
-            await poppler.info('sample.pdf');
+            await poppler.info(samplePdf);
           }
           const infoTime = Date.now() - startInfo;
           console.log('PDF Info (10x):', infoTime + 'ms', 'avg:', (infoTime/10) + 'ms');
 
           // Test image conversion speed
           const startConvert = Date.now();
-          await poppler.convert('sample.pdf', {
+          const pages = await poppler.convert(samplePdf, {
             format: 'png',
-            out_dir: './test-output',
-            out_prefix: 'benchmark',
-            page: 1
+            page: 1,
+            scale: 800
           });
           const convertTime = Date.now() - startConvert;
-          console.log('PNG Conversion:', convertTime + 'ms');
+          console.log('PNG Conversion:', convertTime + 'ms', 'size:', pages[0].data.length, 'bytes');
 
           // Test image data extraction speed
           const startImgData = Date.now();
-          await poppler.imgdata('sample.pdf');
+          await poppler.listImages(samplePdf);
           const imgDataTime = Date.now() - startImgData;
           console.log('Image Data Extraction:', imgDataTime + 'ms');
 
@@ -83,15 +85,19 @@ jobs:
     - name: Memory usage test
       run: |
         node -e "
-        const poppler = require('./index.js');
+        const { PdfPoppler } = require('./packages/pdf-poppler-core');
+        const fs = require('fs');
 
         (async () => {
+          const poppler = new PdfPoppler();
+          const samplePdf = fs.readFileSync('sample.pdf');
+
           const initialMemory = process.memoryUsage();
           console.log('Initial memory:', initialMemory);
 
           // Run multiple operations
           for (let i = 0; i < 50; i++) {
-            await poppler.info('sample.pdf');
+            await poppler.info(samplePdf);
             if (i % 10 === 0) {
               const currentMemory = process.memoryUsage();
               console.log('Memory after', i, 'operations:', currentMemory);
@@ -116,15 +122,19 @@ jobs:
     - name: Stress test
       run: |
         node -e "
-        const poppler = require('./index.js');
+        const { PdfPoppler } = require('./packages/pdf-poppler-core');
+        const fs = require('fs');
 
         (async () => {
           console.log('Running stress test...');
 
+          const poppler = new PdfPoppler();
+          const samplePdf = fs.readFileSync('sample.pdf');
+
           // Concurrent operations
           const promises = [];
           for (let i = 0; i < 20; i++) {
-            promises.push(poppler.info('sample.pdf'));
+            promises.push(poppler.info(samplePdf));
           }
 
           const results = await Promise.all(promises);
@@ -132,7 +142,7 @@ jobs:
 
           // Rapid sequential operations
           for (let i = 0; i < 100; i++) {
-            await poppler.info('sample.pdf');
+            await poppler.info(samplePdf);
           }
 
           console.log('Stress test completed successfully');
