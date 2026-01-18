@@ -92,6 +92,9 @@ describe('PDF Flatten Functionality', () => {
       expect(stream).toBeDefined();
       expect(typeof stream.pipe).toBe('function');
       expect(typeof stream.on).toBe('function');
+
+      // Consume and destroy stream to prevent open handles
+      stream.destroy();
     });
 
     it('should stream valid PDF data', async () => {

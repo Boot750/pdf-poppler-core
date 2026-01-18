@@ -6,7 +6,7 @@
   "scripts": {
     "setup:test": "bash scripts/setup-test.sh",
     "build:core": "cd packages/pdf-poppler-core && npm install && npm run build",
-    "test": "jest --forceExit",
+    "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:ci": "npm run setup:test && npm test"

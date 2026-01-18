@@ -1,7 +1,7 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execFile, spawn, ExecFileOptions } from 'child_process';
+import { execFile, spawn, ExecFileOptions, ChildProcess } from 'child_process';
 import { Readable, PassThrough } from 'stream';
 import {
   PdfPopplerConfig,
@@ -411,7 +411,6 @@ export class PdfPoppler {
   async flattenToStream(input: PdfInput): Promise<Readable> {
     const pdfBuffer = await this.inputToBuffer(input);
     const binary = path.join(this.binaryPath, this.getBinaryName('pdftocairo'));
-    const passThrough = new PassThrough();
 
     const args = ['-pdf', '-', '-'];
 
@@ -420,20 +419,10 @@ export class PdfPoppler {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    proc.stdout.pipe(passThrough);
-
-    proc.stderr.on('data', (data: Buffer) => {
-      // Could emit as warning or store for debugging
-    });
-
-    proc.on('error', (err: Error) => {
-      passThrough.destroy(err);
-    });
-
     proc.stdin.write(pdfBuffer);
     proc.stdin.end();
 
-    return passThrough;
+    return this.createManagedStream(proc);
   }
 
   /**
@@ -801,27 +790,16 @@ export class PdfPoppler {
   private extractSinglePageToStream(pdfBuffer: Buffer, page: number): Readable {
     const binary = path.join(this.binaryPath, this.getBinaryName('pdftocairo'));
     const args = ['-pdf', '-f', String(page), '-l', String(page), '-', '-'];
-    const passThrough = new PassThrough();
 
     const proc = spawn(binary, args, {
       ...this.execOptions,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    proc.stdout.pipe(passThrough);
-
-    proc.stderr.on('data', () => {
-      // Could emit as warning or store for debugging
-    });
-
-    proc.on('error', (err: Error) => {
-      passThrough.destroy(err);
-    });
-
     proc.stdin.write(pdfBuffer);
     proc.stdin.end();
 
-    return passThrough;
+    return this.createManagedStream(proc);
   }
 
   /**
@@ -1498,6 +1476,60 @@ export class PdfPoppler {
   }
 
   /**
+   * Create a managed stream from a child process that properly cleans up
+   * This prevents Jest from hanging due to open handles on Windows
+   */
+  private createManagedStream(proc: ChildProcess): PassThrough {
+    const passThrough = new PassThrough();
+    let cleanedUp = false;
+
+    proc.stdout!.pipe(passThrough);
+
+    // Clean up the child process - prevent multiple calls
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+
+      // Unpipe to break the connection
+      proc.stdout?.unpipe(passThrough);
+
+      // Destroy all stdio streams
+      if (proc.stdout && !proc.stdout.destroyed) {
+        proc.stdout.destroy();
+      }
+      if (proc.stderr && !proc.stderr.destroyed) {
+        proc.stderr.destroy();
+      }
+      if (proc.stdin && !proc.stdin.destroyed) {
+        proc.stdin.destroy();
+      }
+
+      // Kill the process if it's still running
+      if (!proc.killed && proc.exitCode === null) {
+        proc.kill();
+      }
+    };
+
+    // Clean up when stream is consumed
+    passThrough.on('close', cleanup);
+    passThrough.on('end', cleanup);
+    passThrough.on('error', cleanup);
+
+    // Also clean up when process exits (fallback)
+    proc.on('close', cleanup);
+    proc.on('exit', cleanup);
+
+    proc.on('error', (err: Error) => {
+      cleanup();
+      if (!passThrough.destroyed) {
+        passThrough.destroy(err);
+      }
+    });
+
+    return passThrough;
+  }
+
+  /**
    * Convert a single page to buffer
    */
   private async convertSinglePageToBuffer(
@@ -1605,8 +1637,6 @@ export class PdfPoppler {
       ? (options.format as OutputFormat)
       : 'png';
 
-    const passThrough = new PassThrough();
-
     const args: string[] = [`-${format}`, '-singlefile'];
     args.push('-f', String(page));
     args.push('-l', String(page));
@@ -1662,20 +1692,10 @@ export class PdfPoppler {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    proc.stdout.pipe(passThrough);
-
-    proc.stderr.on('data', () => {
-      // Could emit as warning or store for debugging
-    });
-
-    proc.on('error', (err: Error) => {
-      passThrough.destroy(err);
-    });
-
     proc.stdin.write(pdfBuffer);
     proc.stdin.end();
 
-    return passThrough;
+    return this.createManagedStream(proc);
   }
 
   /**

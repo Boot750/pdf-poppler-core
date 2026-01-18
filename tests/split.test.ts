@@ -94,6 +94,9 @@ describe('PDF Splitting', () => {
       const totalPages = parseInt(info.pages, 10);
 
       expect(pageStreams.length).toBe(totalPages);
+
+      // Clean up streams to prevent open handles
+      pageStreams.forEach(page => page.stream.destroy());
     });
 
     it('should return Readable streams', async () => {
@@ -103,6 +106,9 @@ describe('PDF Splitting', () => {
         expect(typeof page.stream.pipe).toBe('function');
         expect(page.stream).toBeInstanceOf(Readable);
       });
+
+      // Clean up streams to prevent open handles
+      pageStreams.forEach(page => page.stream.destroy());
     });
 
     it('should have correct page numbers', async () => {
@@ -111,6 +117,9 @@ describe('PDF Splitting', () => {
       pageStreams.forEach((page, index) => {
         expect(page.page).toBe(index + 1);
       });
+
+      // Clean up streams to prevent open handles
+      pageStreams.forEach(page => page.stream.destroy());
     });
 
     it('should return valid PDF data when consumed', async () => {
@@ -124,6 +133,9 @@ describe('PDF Splitting', () => {
       const result = Buffer.concat(chunks);
 
       expect(result.slice(0, 5).toString()).toBe('%PDF-');
+
+      // Clean up remaining streams to prevent open handles
+      pageStreams.slice(1).forEach(page => page.stream.destroy());
     });
   });
 

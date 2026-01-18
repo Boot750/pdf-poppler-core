@@ -189,6 +189,9 @@ describe('PDF Convert Functionality', () => {
       expect(streams.length).toBe(1);
       expect(streams[0].page).toBe(1);
       expect(typeof streams[0].stream.pipe).toBe('function');
+
+      // Clean up stream to prevent open handles
+      streams[0].stream.destroy();
     });
 
     it('should stream valid PNG data', async () => {
