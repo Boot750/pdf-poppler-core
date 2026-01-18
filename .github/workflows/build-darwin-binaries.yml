@@ -1,0 +1,48 @@
+name: Build macOS Binaries
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    name: Build macOS Binaries
+    runs-on: macos-14
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install poppler via Homebrew
+      run: |
+        brew update
+        brew install poppler
+
+    - name: Get poppler version
+      id: version
+      run: |
+        VERSION=$(brew info poppler --json | jq -r '.[0].versions.stable')
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "Poppler version: ${VERSION}"
+
+    - name: Build and package binaries
+      run: |
+        chmod +x scripts/build/build-darwin-binaries.sh
+        ./scripts/build/build-darwin-binaries.sh ./output
+
+    - name: Show contents
+      run: |
+        echo "=== Binaries ==="
+        ls -la output/*/bin/
+        echo ""
+        echo "=== Libraries ==="
+        ls -la output/*/lib/ | head -30
+        echo ""
+        echo "=== Total size ==="
+        du -sh output/
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: poppler-darwin-${{ steps.version.outputs.version }}
+        path: output/
+        retention-days: 90
