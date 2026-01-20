@@ -1,0 +1,275 @@
+# Dockerfile for cross-compiling Poppler binaries for macOS using osxcross
+#
+# IMPORTANT: You need to provide the macOS SDK. Due to Apple's license, it cannot be distributed.
+#
+# To get the SDK:
+# 1. On a Mac, install Xcode
+# 2. Run: scripts/package-macos-sdk.sh (creates MacOSX14.0.sdk.tar.xz)
+# 3. Place the SDK tarball in the same directory as this Dockerfile
+#
+# Build with:
+#   docker build -f Dockerfile.darwin -t poppler-darwin-builder .
+#   docker run --rm -v $(pwd)/output:/output poppler-darwin-builder
+#
+
+FROM ubuntu:22.04
+
+ARG POPPLER_VERSION=24.08.0
+ARG MACOS_SDK_VERSION=14.0
+ARG OSX_VERSION_MIN=11.0
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    wget \
+    curl \
+    pkg-config \
+    clang \
+    llvm \
+    libssl-dev \
+    libxml2-dev \
+    libbz2-dev \
+    zlib1g-dev \
+    patch \
+    python3 \
+    xz-utils \
+    cpio \
+    liblzma-dev \
+    libz-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone and build osxcross
+WORKDIR /opt
+RUN git clone https://github.com/tpoechtrager/osxcross.git
+
+# Copy macOS SDK (must be provided by user)
+COPY MacOSX${MACOS_SDK_VERSION}.sdk.tar.xz /opt/osxcross/tarballs/
+
+# Build osxcross
+WORKDIR /opt/osxcross
+ENV UNATTENDED=1
+RUN ./build.sh
+
+# Add osxcross to PATH
+ENV PATH="/opt/osxcross/target/bin:${PATH}"
+ENV OSXCROSS_TARGET=darwin23
+ENV OSXCROSS_HOST=x86_64-apple-darwin23
+ENV MACOSX_DEPLOYMENT_TARGET=${OSX_VERSION_MIN}
+
+# Create working directory
+WORKDIR /build
+
+# Download and extract poppler dependencies
+# We'll build static versions to bundle with the binaries
+
+# Build zlib
+RUN wget https://zlib.net/zlib-1.3.1.tar.gz && \
+    tar xzf zlib-1.3.1.tar.gz && \
+    cd zlib-1.3.1 && \
+    CC=o64-clang CFLAGS="-mmacosx-version-min=${OSX_VERSION_MIN}" \
+    ./configure --prefix=/build/deps --static && \
+    make -j$(nproc) && make install && \
+    cd .. && rm -rf zlib-1.3.1*
+
+# Build libpng
+RUN wget https://download.sourceforge.net/libpng/libpng-1.6.43.tar.xz && \
+    tar xf libpng-1.6.43.tar.xz && \
+    cd libpng-1.6.43 && \
+    CC=o64-clang CXX=o64-clang++ \
+    CFLAGS="-mmacosx-version-min=${OSX_VERSION_MIN} -I/build/deps/include" \
+    LDFLAGS="-L/build/deps/lib" \
+    ./configure --prefix=/build/deps --host=x86_64-apple-darwin23 \
+        --enable-static --disable-shared && \
+    make -j$(nproc) && make install && \
+    cd .. && rm -rf libpng-1.6.43*
+
+# Build libjpeg-turbo
+RUN wget https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.0.3/libjpeg-turbo-3.0.3.tar.gz && \
+    tar xzf libjpeg-turbo-3.0.3.tar.gz && \
+    cd libjpeg-turbo-3.0.3 && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_SYSTEM_NAME=Darwin \
+        -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
+        -DCMAKE_C_COMPILER=o64-clang \
+        -DCMAKE_CXX_COMPILER=o64-clang++ \
+        -DCMAKE_INSTALL_PREFIX=/build/deps \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET=${OSX_VERSION_MIN} \
+        -DENABLE_SHARED=OFF \
+        -DWITH_TURBOJPEG=OFF && \
+    make -j$(nproc) && make install && \
+    cd ../.. && rm -rf libjpeg-turbo-3.0.3*
+
+# Build libtiff
+RUN wget https://download.osgeo.org/libtiff/tiff-4.6.0.tar.gz && \
+    tar xzf tiff-4.6.0.tar.gz && \
+    cd tiff-4.6.0 && \
+    CC=o64-clang CXX=o64-clang++ \
+    CFLAGS="-mmacosx-version-min=${OSX_VERSION_MIN} -I/build/deps/include" \
+    CXXFLAGS="-mmacosx-version-min=${OSX_VERSION_MIN} -I/build/deps/include" \
+    LDFLAGS="-L/build/deps/lib" \
+    ./configure --prefix=/build/deps --host=x86_64-apple-darwin23 \
+        --enable-static --disable-shared \
+        --disable-webp --disable-zstd --disable-lzma && \
+    make -j$(nproc) && make install && \
+    cd .. && rm -rf tiff-4.6.0*
+
+# Build freetype
+RUN wget https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.xz && \
+    tar xf freetype-2.13.2.tar.xz && \
+    cd freetype-2.13.2 && \
+    CC=o64-clang CXX=o64-clang++ \
+    CFLAGS="-mmacosx-version-min=${OSX_VERSION_MIN} -I/build/deps/include" \
+    LDFLAGS="-L/build/deps/lib" \
+    ./configure --prefix=/build/deps --host=x86_64-apple-darwin23 \
+        --enable-static --disable-shared \
+        --with-zlib=yes --with-bzip2=no --with-png=yes --with-harfbuzz=no && \
+    make -j$(nproc) && make install && \
+    cd .. && rm -rf freetype-2.13.2*
+
+# Build fontconfig
+RUN wget https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.15.0.tar.xz && \
+    tar xf fontconfig-2.15.0.tar.xz && \
+    cd fontconfig-2.15.0 && \
+    CC=o64-clang CXX=o64-clang++ \
+    CFLAGS="-mmacosx-version-min=${OSX_VERSION_MIN} -I/build/deps/include" \
+    CXXFLAGS="-mmacosx-version-min=${OSX_VERSION_MIN} -I/build/deps/include" \
+    LDFLAGS="-L/build/deps/lib" \
+    PKG_CONFIG_PATH=/build/deps/lib/pkgconfig \
+    FREETYPE_CFLAGS="-I/build/deps/include/freetype2" \
+    FREETYPE_LIBS="-L/build/deps/lib -lfreetype" \
+    ./configure --prefix=/build/deps --host=x86_64-apple-darwin23 \
+        --enable-static --disable-shared \
+        --disable-docs && \
+    make -j$(nproc) && make install && \
+    cd .. && rm -rf fontconfig-2.15.0*
+
+# Build pixman
+RUN wget https://www.cairographics.org/releases/pixman-0.42.2.tar.gz && \
+    tar xzf pixman-0.42.2.tar.gz && \
+    cd pixman-0.42.2 && \
+    CC=o64-clang CXX=o64-clang++ \
+    CFLAGS="-mmacosx-version-min=${OSX_VERSION_MIN}" \
+    ./configure --prefix=/build/deps --host=x86_64-apple-darwin23 \
+        --enable-static --disable-shared && \
+    make -j$(nproc) && make install && \
+    cd .. && rm -rf pixman-0.42.2*
+
+# Build cairo
+RUN wget https://www.cairographics.org/releases/cairo-1.18.0.tar.xz && \
+    tar xf cairo-1.18.0.tar.xz && \
+    cd cairo-1.18.0 && \
+    CC=o64-clang CXX=o64-clang++ \
+    CFLAGS="-mmacosx-version-min=${OSX_VERSION_MIN} -I/build/deps/include -I/build/deps/include/freetype2" \
+    CXXFLAGS="-mmacosx-version-min=${OSX_VERSION_MIN} -I/build/deps/include -I/build/deps/include/freetype2" \
+    LDFLAGS="-L/build/deps/lib" \
+    PKG_CONFIG_PATH=/build/deps/lib/pkgconfig \
+    ./configure --prefix=/build/deps --host=x86_64-apple-darwin23 \
+        --enable-static --disable-shared \
+        --enable-quartz=no --enable-quartz-font=no --enable-quartz-image=no \
+        --enable-png=yes --enable-pdf=yes --enable-svg=yes \
+        --disable-xlib --disable-xcb && \
+    make -j$(nproc) && make install && \
+    cd .. && rm -rf cairo-1.18.0*
+
+# Build openjpeg
+RUN wget https://github.com/uclouvain/openjpeg/archive/refs/tags/v2.5.2.tar.gz -O openjpeg-2.5.2.tar.gz && \
+    tar xzf openjpeg-2.5.2.tar.gz && \
+    cd openjpeg-2.5.2 && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_SYSTEM_NAME=Darwin \
+        -DCMAKE_C_COMPILER=o64-clang \
+        -DCMAKE_CXX_COMPILER=o64-clang++ \
+        -DCMAKE_INSTALL_PREFIX=/build/deps \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET=${OSX_VERSION_MIN} \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DBUILD_CODEC=OFF && \
+    make -j$(nproc) && make install && \
+    cd ../.. && rm -rf openjpeg-2.5.2*
+
+# Build lcms2
+RUN wget https://github.com/mm2/Little-CMS/releases/download/lcms2.16/lcms2-2.16.tar.gz && \
+    tar xzf lcms2-2.16.tar.gz && \
+    cd lcms2-2.16 && \
+    CC=o64-clang CXX=o64-clang++ \
+    CFLAGS="-mmacosx-version-min=${OSX_VERSION_MIN}" \
+    ./configure --prefix=/build/deps --host=x86_64-apple-darwin23 \
+        --enable-static --disable-shared && \
+    make -j$(nproc) && make install && \
+    cd .. && rm -rf lcms2-2.16*
+
+# Build nss (for PDF signature support - optional, skip if too complex)
+# For now, we'll build poppler without NSS support
+
+# Build poppler
+RUN wget https://poppler.freedesktop.org/poppler-${POPPLER_VERSION}.tar.xz && \
+    tar xf poppler-${POPPLER_VERSION}.tar.xz && \
+    cd poppler-${POPPLER_VERSION} && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_SYSTEM_NAME=Darwin \
+        -DCMAKE_C_COMPILER=o64-clang \
+        -DCMAKE_CXX_COMPILER=o64-clang++ \
+        -DCMAKE_INSTALL_PREFIX=/build/poppler-install \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET=${OSX_VERSION_MIN} \
+        -DCMAKE_PREFIX_PATH=/build/deps \
+        -DCMAKE_FIND_ROOT_PATH=/build/deps \
+        -DPNG_LIBRARY=/build/deps/lib/libpng.a \
+        -DPNG_PNG_INCLUDE_DIR=/build/deps/include \
+        -DJPEG_LIBRARY=/build/deps/lib/libjpeg.a \
+        -DJPEG_INCLUDE_DIR=/build/deps/include \
+        -DTIFF_LIBRARY=/build/deps/lib/libtiff.a \
+        -DTIFF_INCLUDE_DIR=/build/deps/include \
+        -DFREETYPE_LIBRARY=/build/deps/lib/libfreetype.a \
+        -DFREETYPE_INCLUDE_DIRS=/build/deps/include/freetype2 \
+        -DFontconfig_LIBRARY=/build/deps/lib/libfontconfig.a \
+        -DFontconfig_INCLUDE_DIR=/build/deps/include \
+        -DCAIRO_LIBRARY=/build/deps/lib/libcairo.a \
+        -DCAIRO_INCLUDE_DIR=/build/deps/include/cairo \
+        -DOpenJPEG_DIR=/build/deps/lib/cmake/openjpeg-2.5 \
+        -DLCMS2_LIBRARY=/build/deps/lib/liblcms2.a \
+        -DLCMS2_INCLUDE_DIR=/build/deps/include \
+        -DENABLE_BOOST=OFF \
+        -DENABLE_CPP=OFF \
+        -DENABLE_GLIB=OFF \
+        -DENABLE_GOBJECT_INTROSPECTION=OFF \
+        -DENABLE_GTK_DOC=OFF \
+        -DENABLE_QT5=OFF \
+        -DENABLE_QT6=OFF \
+        -DENABLE_LIBCURL=OFF \
+        -DENABLE_NSS3=OFF \
+        -DENABLE_GPGME=OFF \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DENABLE_UTILS=ON && \
+    make -j$(nproc) && make install
+
+# Create output directory structure
+RUN mkdir -p /output/poppler-${POPPLER_VERSION}/bin && \
+    mkdir -p /output/poppler-${POPPLER_VERSION}/lib
+
+# Copy binaries
+RUN cp /build/poppler-install/bin/pdfinfo /output/poppler-${POPPLER_VERSION}/bin/ && \
+    cp /build/poppler-install/bin/pdftocairo /output/poppler-${POPPLER_VERSION}/bin/ && \
+    cp /build/poppler-install/bin/pdftotext /output/poppler-${POPPLER_VERSION}/bin/ && \
+    cp /build/poppler-install/bin/pdffonts /output/poppler-${POPPLER_VERSION}/bin/ && \
+    cp /build/poppler-install/bin/pdfimages /output/poppler-${POPPLER_VERSION}/bin/ && \
+    cp /build/poppler-install/bin/pdfseparate /output/poppler-${POPPLER_VERSION}/bin/ && \
+    cp /build/poppler-install/bin/pdfunite /output/poppler-${POPPLER_VERSION}/bin/ && \
+    cp /build/poppler-install/bin/pdfdetach /output/poppler-${POPPLER_VERSION}/bin/ && \
+    cp /build/poppler-install/bin/pdftohtml /output/poppler-${POPPLER_VERSION}/bin/ && \
+    cp /build/poppler-install/bin/pdftoppm /output/poppler-${POPPLER_VERSION}/bin/ && \
+    cp /build/poppler-install/bin/pdftops /output/poppler-${POPPLER_VERSION}/bin/ || true
+
+# Create version file
+RUN echo "${POPPLER_VERSION}" > /output/poppler-${POPPLER_VERSION}/VERSION
+
+# Copy any shared libraries if needed
+RUN cp /build/poppler-install/lib/*.dylib /output/poppler-${POPPLER_VERSION}/lib/ 2>/dev/null || true
+
+# Set up entrypoint to copy output
+CMD ["sh", "-c", "cp -r /output/* /artifacts/"]
