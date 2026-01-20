@@ -1038,7 +1038,33 @@ export class PdfPoppler {
       throw new BinaryNotFoundError('pdfsig');
     }
 
-    // pdfsig supports stdin with '-'
+    // macOS pdfsig doesn't support stdin - use temp file directly
+    if (this.resolvedConfig.platform === 'darwin') {
+      return await this.verifySignaturesViaTempFile(binary, pdfBuffer);
+    }
+
+    // Try stdin first, fall back to temp file if stdin not supported
+    try {
+      return await this.verifySignaturesViaStdin(binary, pdfBuffer);
+    } catch (error) {
+      // If EPIPE or stdin error, try temp file approach
+      // Check both error message and error code (for NodeJS.ErrnoException)
+      const isStdinError = error instanceof Error && (
+        error.message.includes('EPIPE') ||
+        error.message.includes('stdin') ||
+        (error as NodeJS.ErrnoException).code === 'EPIPE'
+      );
+      if (isStdinError) {
+        return await this.verifySignaturesViaTempFile(binary, pdfBuffer);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Verify signatures using stdin
+   */
+  private verifySignaturesViaStdin(binary: string, pdfBuffer: Buffer): Promise<SignatureInfo> {
     return new Promise((resolve, reject) => {
       const proc = spawn(binary, ['-'], {
         ...this.execOptions,
@@ -1047,6 +1073,7 @@ export class PdfPoppler {
 
       let stdout = '';
       let stderr = '';
+      let stdinError: Error | null = null;
 
       proc.stdout.on('data', (data: Buffer) => {
         stdout += data.toString();
@@ -1056,12 +1083,19 @@ export class PdfPoppler {
         stderr += data.toString();
       });
 
+      // Handle stdin errors (EPIPE when process doesn't support stdin)
+      proc.stdin.on('error', (error: Error) => {
+        stdinError = error;
+      });
+
       proc.on('error', (error: Error) => {
         reject(this.wrapError(error, stderr));
       });
 
       proc.on('close', (code: number) => {
-        if (code !== 0) {
+        if (stdinError) {
+          reject(stdinError);
+        } else if (code !== 0) {
           reject(this.wrapError(new Error(`pdfsig exited with code ${code}`), stderr));
         } else {
           resolve(this.parseSignatures(stdout));
@@ -1071,6 +1105,64 @@ export class PdfPoppler {
       proc.stdin.write(pdfBuffer);
       proc.stdin.end();
     });
+  }
+
+  /**
+   * Verify signatures using temp file (fallback for platforms that don't support stdin)
+   */
+  private async verifySignaturesViaTempFile(binary: string, pdfBuffer: Buffer): Promise<SignatureInfo> {
+    const tempDir = os.tmpdir();
+    const tempFile = path.join(tempDir, `pdfsig-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
+
+    try {
+      // Write PDF to temp file
+      fs.writeFileSync(tempFile, pdfBuffer);
+
+      return await new Promise((resolve, reject) => {
+        const proc = spawn(binary, [tempFile], {
+          ...this.execOptions,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        proc.stdout.on('data', (data: Buffer) => {
+          stdout += data.toString();
+        });
+
+        proc.stderr.on('data', (data: Buffer) => {
+          stderr += data.toString();
+        });
+
+        proc.on('error', (error: Error) => {
+          reject(this.wrapError(error, stderr));
+        });
+
+        proc.on('close', (code: number) => {
+          if (code !== 0) {
+            // Check for NSS initialization errors (missing library dependencies)
+            // This means pdfsig binary exists but isn't functional
+            if (stderr.includes('NSS_Init failed') || stderr.includes('NSS is not initialized')) {
+              reject(new BinaryNotFoundError('pdfsig (NSS libraries not available)'));
+            } else {
+              reject(this.wrapError(new Error(`pdfsig exited with code ${code}`), stderr));
+            }
+          } else {
+            resolve(this.parseSignatures(stdout));
+          }
+        });
+      });
+    } finally {
+      // Clean up temp file
+      try {
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
   }
 
   /**
@@ -1268,7 +1360,8 @@ export class PdfPoppler {
    * Get detected poppler version
    */
   getVersion(): string | null {
-    const match = this.binaryPath.match(/poppler-(\d+\.\d+)/);
+    // Match both X.XX and X.XX.X version formats
+    const match = this.binaryPath.match(/poppler-(\d+\.\d+(?:\.\d+)?)/);
     return match ? match[1] : null;
   }
 
@@ -1359,6 +1452,8 @@ export class PdfPoppler {
     // Platform-specific environment setup
     if (this.resolvedConfig.platform === 'linux') {
       options.env = this.buildLinuxEnv();
+    } else if (this.resolvedConfig.platform === 'darwin') {
+      options.env = this.buildDarwinEnv();
     } else {
       options.env = { ...process.env };
     }
@@ -1407,6 +1502,25 @@ export class PdfPoppler {
       if (fs.existsSync(xkbPath)) {
         env.XKB_CONFIG_ROOT = xkbPath;
       }
+    }
+
+    return env;
+  }
+
+  /**
+   * Build environment variables for macOS
+   */
+  private buildDarwinEnv(): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = { ...process.env };
+
+    // Set up library path for bundled dylibs
+    const popplerDir = this.binaryPath.replace(/[\/\\]bin$/, '');
+    const libPath = path.join(popplerDir, 'lib');
+
+    if (fs.existsSync(libPath)) {
+      env.DYLD_LIBRARY_PATH = env.DYLD_LIBRARY_PATH
+        ? `${libPath}:${env.DYLD_LIBRARY_PATH}`
+        : libPath;
     }
 
     return env;

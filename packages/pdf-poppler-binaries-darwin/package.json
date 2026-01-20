@@ -1,7 +1,7 @@
 {
   "name": "pdf-poppler-binaries-darwin",
   "version": "0.1.0-beta",
-  "description": "macOS binaries for pdf-poppler. Includes Poppler utilities compiled for macOS (x64).",
+  "description": "macOS binaries for pdf-poppler. Includes Poppler utilities compiled for macOS (arm64/Apple Silicon).",
   "main": "index.js",
   "repository": {
     "type": "git",

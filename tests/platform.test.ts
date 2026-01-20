@@ -23,19 +23,19 @@ describe('Platform-Specific Functionality', () => {
       expect(poppler.getPath()).toMatch(/poppler-\d+\.\d+/);
     });
 
-    it.skip('should detect macOS platform correctly', () => {
-      // TODO: Enable when macOS binaries are available
-      if (originalPlatform === 'win32') {
+    it('should detect macOS platform correctly', () => {
+      if (originalPlatform !== 'darwin') {
         expect(true).toBe(true);
         return;
       }
 
       const poppler = new PdfPoppler();
       expect(poppler.getPath()).toContain('osx');
+      expect(poppler.getPath()).toMatch(/poppler-\d+\.\d+\.\d+/);
     });
 
     it('should detect Linux platform correctly', () => {
-      if (originalPlatform === 'win32') {
+      if (originalPlatform !== 'linux') {
         expect(true).toBe(true);
         return;
       }
@@ -95,6 +95,68 @@ describe('Platform-Specific Functionality', () => {
     });
   });
 
+  describe('macOS Platform Specific', () => {
+    it('should set up correct paths for macOS', () => {
+      if (originalPlatform !== 'darwin') {
+        expect(true).toBe(true);
+        return;
+      }
+
+      const poppler = new PdfPoppler();
+
+      expect(poppler.getPath()).toContain('osx');
+      expect(poppler.getPath()).toMatch(/poppler-\d+\.\d+\.\d+/);
+      expect(poppler.getPath()).toContain('bin');
+    });
+
+    it('should detect macOS version correctly', () => {
+      if (originalPlatform !== 'darwin') {
+        expect(true).toBe(true);
+        return;
+      }
+
+      const poppler = new PdfPoppler();
+
+      expect(poppler.getVersion()).toBeDefined();
+      expect(typeof poppler.getVersion()).toBe('string');
+      expect(poppler.getVersion()).toMatch(/^\d+\.\d+\.\d+$/);
+    });
+
+    it('should return available versions on macOS', () => {
+      if (originalPlatform !== 'darwin') {
+        expect(true).toBe(true);
+        return;
+      }
+
+      const poppler = new PdfPoppler();
+      const versions = poppler.getAvailableVersions();
+
+      expect(Array.isArray(versions)).toBe(true);
+      expect(versions.length).toBeGreaterThan(0);
+
+      versions.forEach((v) => {
+        expect(typeof v.version).toBe('string');
+        expect(v.hasXvfb).toBe(false);
+        expect(typeof v.path).toBe('string');
+        expect(v.path).toContain('osx');
+      });
+    });
+
+    it('should have bundled dylib dependencies on macOS', () => {
+      if (originalPlatform !== 'darwin') {
+        expect(true).toBe(true);
+        return;
+      }
+
+      const poppler = new PdfPoppler();
+      const binPath = poppler.getPath();
+      const libPath = binPath.replace('/bin', '/lib');
+
+      expect(fs.existsSync(libPath)).toBe(true);
+      expect(fs.readdirSync(libPath).some(f => f.endsWith('.dylib'))).toBe(true);
+    });
+  });
+
   describe('Binary Availability', () => {
     it('should have required binaries for current platform', () => {
       const poppler = new PdfPoppler();
@@ -108,6 +170,8 @@ describe('Platform-Specific Functionality', () => {
         expect(poppler.getPath()).toContain('win');
       } else if (originalPlatform === 'linux') {
         expect(poppler.getPath()).toContain('linux');
+      } else if (originalPlatform === 'darwin') {
+        expect(poppler.getPath()).toContain('osx');
       }
     });
   });
@@ -135,16 +199,13 @@ describe('Platform-Specific Functionality', () => {
       const versions = poppler.getAvailableVersions();
 
       expect(Array.isArray(versions)).toBe(true);
+      expect(versions.length).toBeGreaterThan(0);
 
-      if (originalPlatform === 'darwin') {
-        expect(versions.length).toBe(0);
-      } else {
-        versions.forEach((v) => {
-          expect(typeof v.version).toBe('string');
-          expect(typeof v.hasXvfb).toBe('boolean');
-          expect(typeof v.path).toBe('string');
-        });
-      }
+      versions.forEach((v) => {
+        expect(typeof v.version).toBe('string');
+        expect(typeof v.hasXvfb).toBe('boolean');
+        expect(typeof v.path).toBe('string');
+      });
     });
   });
 

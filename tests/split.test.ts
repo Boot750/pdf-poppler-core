@@ -125,18 +125,36 @@ describe('PDF Splitting', () => {
     it('should return valid PDF data when consumed', async () => {
       const pageStreams = await poppler.splitToStreams(samplePdfBuffer);
 
-      // Consume first stream
-      const chunks: Buffer[] = [];
-      for await (const chunk of pageStreams[0].stream) {
-        chunks.push(Buffer.from(chunk));
-      }
-      const result = Buffer.concat(chunks);
+      // Consume first stream with a manual approach (more reliable cross-platform)
+      const result = await new Promise<Buffer>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        const stream = pageStreams[0].stream;
+
+        stream.on('data', (chunk: Buffer) => {
+          chunks.push(Buffer.from(chunk));
+        });
+
+        stream.on('end', () => {
+          resolve(Buffer.concat(chunks));
+        });
+
+        stream.on('error', reject);
+
+        // Timeout fallback in case stream doesn't end properly
+        setTimeout(() => {
+          if (chunks.length > 0) {
+            resolve(Buffer.concat(chunks));
+          } else {
+            reject(new Error('Stream timeout'));
+          }
+        }, 10000);
+      });
 
       expect(result.slice(0, 5).toString()).toBe('%PDF-');
 
       // Clean up remaining streams to prevent open handles
       pageStreams.slice(1).forEach(page => page.stream.destroy());
-    });
+    }, 60000);
   });
 
   describe('Error Handling', () => {

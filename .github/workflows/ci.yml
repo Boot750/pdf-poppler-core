@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ master, main, develop ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ master, main, develop ]
+    branches: [ main, develop ]
 
 jobs:
   test:
@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-14]
         node-version: [18, 20, 22, 24]
         include:
           - os: ubuntu-latest
@@ -23,6 +23,9 @@ jobs:
           - os: windows-latest
             binary_package: pdf-poppler-binaries-win32
             binary_path: packages/pdf-poppler-binaries-win32/lib/win
+          - os: macos-14
+            binary_package: pdf-poppler-binaries-darwin
+            binary_path: packages/pdf-poppler-binaries-darwin/lib/osx
 
     steps:
     - name: Checkout repository
