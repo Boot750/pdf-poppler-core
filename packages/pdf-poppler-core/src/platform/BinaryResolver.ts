@@ -200,8 +200,8 @@ export class BinaryResolver {
       const entries = fs.readdirSync(basePath);
 
       for (const entry of entries) {
-        // Match versioned folders: poppler-X.XX or poppler-X.XX-xvfb
-        const match = entry.match(/^poppler-(\d+\.\d+)(-xvfb)?$/);
+        // Match versioned folders: poppler-X.XX, poppler-X.XX.X, or poppler-X.XX-xvfb
+        const match = entry.match(/^poppler-(\d+\.\d+(?:\.\d+)?)(-xvfb)?$/);
         if (match) {
           const versionPath = path.join(basePath, entry);
           const binPath = path.join(versionPath, 'bin', binaryName);

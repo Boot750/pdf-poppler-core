@@ -128,13 +128,13 @@ for bin in "${PACKAGE_DIR}/bin/"*; do
         # Get current dependencies
         otool -L "$bin" 2>/dev/null | tail -n +2 | awk '{print $1}' | while read dep; do
             if [[ "$dep" == ${BREW_PREFIX}/* ]]; then
-                local lib_name=$(basename "$dep")
+                lib_name=$(basename "$dep")
                 install_name_tool -change "$dep" "@executable_path/../lib/${lib_name}" "$bin" 2>/dev/null || true
             elif [[ "$dep" == @loader_path/* ]]; then
-                local lib_name=$(basename "$dep")
+                lib_name=$(basename "$dep")
                 install_name_tool -change "$dep" "@executable_path/../lib/${lib_name}" "$bin" 2>/dev/null || true
             elif [[ "$dep" == @rpath/* ]]; then
-                local lib_name=$(basename "$dep")
+                lib_name=$(basename "$dep")
                 install_name_tool -change "$dep" "@executable_path/../lib/${lib_name}" "$bin" 2>/dev/null || true
             fi
         done
@@ -144,7 +144,7 @@ done
 # Fix library paths within libraries themselves
 for lib in "${PACKAGE_DIR}/lib/"*.dylib; do
     if [ -f "$lib" ]; then
-        local lib_name=$(basename "$lib")
+        lib_name=$(basename "$lib")
 
         # Change the library's own ID
         install_name_tool -id "@loader_path/${lib_name}" "$lib" 2>/dev/null || true
@@ -152,13 +152,13 @@ for lib in "${PACKAGE_DIR}/lib/"*.dylib; do
         # Fix references to other libraries
         otool -L "$lib" 2>/dev/null | tail -n +2 | awk '{print $1}' | while read dep; do
             if [[ "$dep" == ${BREW_PREFIX}/* ]]; then
-                local dep_name=$(basename "$dep")
+                dep_name=$(basename "$dep")
                 install_name_tool -change "$dep" "@loader_path/${dep_name}" "$lib" 2>/dev/null || true
             elif [[ "$dep" == @loader_path/* ]] && [[ "$dep" != "@loader_path/${lib_name}" ]]; then
-                local dep_name=$(basename "$dep")
+                dep_name=$(basename "$dep")
                 install_name_tool -change "$dep" "@loader_path/${dep_name}" "$lib" 2>/dev/null || true
             elif [[ "$dep" == @rpath/* ]]; then
-                local dep_name=$(basename "$dep")
+                dep_name=$(basename "$dep")
                 install_name_tool -change "$dep" "@loader_path/${dep_name}" "$lib" 2>/dev/null || true
             fi
         done
