@@ -16,6 +16,8 @@ echo -e "${BLUE}Step 1: Copying LICENSE files...${NC}"
 cp LICENSE packages/pdf-poppler-core/ 2>/dev/null || echo "LICENSE already exists in core"
 cp LICENSE packages/pdf-poppler-binaries-linux/ 2>/dev/null || echo "LICENSE already exists in linux"
 cp LICENSE packages/pdf-poppler-binaries-win32/ 2>/dev/null || echo "LICENSE already exists in win32"
+cp LICENSE packages/pdf-poppler-binaries-darwin/ 2>/dev/null || echo "LICENSE already exists in darwin"
+cp LICENSE packages/pdf-poppler-binaries-aws-2/ 2>/dev/null || echo "LICENSE already exists in aws-2"
 echo -e "${GREEN}✓ LICENSE files copied${NC}"
 
 echo ""
@@ -44,7 +46,7 @@ coverage/
 EOF
 
 # Binary packages .npmignore (same for all platforms)
-for pkg in linux win32; do
+for pkg in linux win32 darwin aws-2; do
 cat > packages/pdf-poppler-binaries-$pkg/.npmignore << 'EOF'
 # Development
 node_modules/
@@ -95,6 +97,18 @@ npm pack --dry-run 2>&1 | head -30
 cd ../..
 
 echo ""
+echo -e "${YELLOW}=== pdf-poppler-binaries-darwin ===${NC}"
+cd packages/pdf-poppler-binaries-darwin
+npm pack --dry-run 2>&1 | head -30
+cd ../..
+
+echo ""
+echo -e "${YELLOW}=== pdf-poppler-binaries-aws-2 ===${NC}"
+cd packages/pdf-poppler-binaries-aws-2
+npm pack --dry-run 2>&1 | head -30
+cd ../..
+
+echo ""
 echo -e "${GREEN}=========================================="
 echo "Preparation complete!"
 echo "==========================================${NC}"
@@ -103,8 +117,8 @@ echo "Package versions:"
 echo "  pdf-poppler-core:            $(grep '"version"' packages/pdf-poppler-core/package.json | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')"
 echo "  pdf-poppler-binaries-linux:  $(grep '"version"' packages/pdf-poppler-binaries-linux/package.json | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')"
 echo "  pdf-poppler-binaries-win32:  $(grep '"version"' packages/pdf-poppler-binaries-win32/package.json | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')"
-echo ""
-echo -e "${YELLOW}Note: pdf-poppler-binaries-darwin is not included in this release${NC}"
+echo "  pdf-poppler-binaries-darwin: $(grep '"version"' packages/pdf-poppler-binaries-darwin/package.json | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')"
+echo "  pdf-poppler-binaries-aws-2:  $(grep '"version"' packages/pdf-poppler-binaries-aws-2/package.json | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')"
 echo ""
 echo "Next steps:"
 echo "1. Review package contents above"
