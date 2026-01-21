@@ -1,0 +1,14 @@
+# Development
+node_modules/
+
+# Docs (except README)
+*.md
+!README.md
+
+# Archives (ship extracted only)
+*.tar.gz
+*.zip
+
+# IDE
+.vscode/
+.idea/
